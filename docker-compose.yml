@@ -1,0 +1,82 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: dev
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000/api/v1
+      VITE_SIGNALING_URL: ws://localhost:4000/ws
+    depends_on:
+      api:
+        condition: service_started
+      signaling:
+        condition: service_started
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: dev
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+      SIGNALING_PUBLIC_URL: ws://localhost:4000/ws
+      WEB_PUBLIC_URL: http://localhost:5173
+      JOIN_TOKEN_SECRET: ${JOIN_TOKEN_SECRET:-change-me-for-local-development}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  signaling:
+    build:
+      context: .
+      dockerfile: apps/signaling/Dockerfile
+      target: dev
+    ports:
+      - "4000:4000"
+      - "40000-40100:40000-40100/udp"
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      REDIS_URL: redis://redis:6379
+      MEDIASOUP_LISTEN_IP: 0.0.0.0
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
+      MEDIASOUP_RTC_MIN_PORT: 40000
+      MEDIASOUP_RTC_MAX_PORT: 40100
+      TURN_URL: turn:localhost:3478
+      TURN_USERNAME: conference
+      TURN_PASSWORD: conference
+    depends_on:
+      redis:
+        condition: service_healthy
+      turn:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  turn:
+    image: coturn/coturn:4.6-alpine
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+    command:
+      - --lt-cred-mech
+      - --user=conference:conference
+      - --realm=conference.local
+      - --no-tls
+      - --no-dtls
+      - --log-file=-
