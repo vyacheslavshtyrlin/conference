@@ -12,20 +12,23 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "react-router-dom": "^6",
     "@conference/config": "workspace:*",
     "@conference/contracts": "workspace:*",
     "@conference/logger": "workspace:*",
     "@mantine/core": "^7.15.2",
     "@mantine/hooks": "^7.15.2",
+    "@mantine/notifications": "7.17.8",
     "@tanstack/react-query": "^5.62.7",
+    "mediasoup-client": "^3.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.5",
     "@types/react": "^19.0.2",
-    "@types/react-dom": "^19.0.2"
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.5"
   }
 }

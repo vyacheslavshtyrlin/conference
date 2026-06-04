@@ -24,6 +24,8 @@ export const createRoomResponseSchema = z.object({
   slug: z.string().min(1),
   joinUrl: z.string().url(),
   creatorToken: z.string().min(1),
+  mediaNodeId: z.string().min(1),
+  signalingUrl: z.string().url(),
   expiresAt: z.string().datetime(),
 });
 
@@ -32,6 +34,8 @@ export const getRoomResponseSchema = z.object({
   slug: z.string().min(1),
   expiresAt: z.string().datetime(),
   status: roomStatusSchema,
+  mediaNodeId: z.string().min(1),
+  signalingUrl: z.string().url(),
 });
 
 export const joinRoomRequestSchema = z.object({
@@ -148,6 +152,12 @@ export const consumeRequestEventSchema = z.object({
   rtpCapabilities: mediasoupParametersSchema,
 });
 
+export const closeProducerRequestEventSchema = z.object({
+  type: z.literal("mediasoup:closeProducer"),
+  requestId: requestIdSchema,
+  producerId: z.string().min(1),
+});
+
 export const setMediaStateRequestEventSchema = z.object({
   type: z.literal("media:setState"),
   requestId: requestIdSchema,
@@ -166,6 +176,7 @@ export const clientWebSocketEventSchema = z.discriminatedUnion("type", [
   connectTransportRequestEventSchema,
   produceRequestEventSchema,
   consumeRequestEventSchema,
+  closeProducerRequestEventSchema,
   setMediaStateRequestEventSchema,
   roomLeaveRequestEventSchema,
 ]);
@@ -180,6 +191,7 @@ export type CreateWebRtcTransportRequestEvent = z.infer<
 export type ConnectTransportRequestEvent = z.infer<typeof connectTransportRequestEventSchema>;
 export type ProduceRequestEvent = z.infer<typeof produceRequestEventSchema>;
 export type ConsumeRequestEvent = z.infer<typeof consumeRequestEventSchema>;
+export type CloseProducerRequestEvent = z.infer<typeof closeProducerRequestEventSchema>;
 export type SetMediaStateRequestEvent = z.infer<typeof setMediaStateRequestEventSchema>;
 export type RoomLeaveRequestEvent = z.infer<typeof roomLeaveRequestEventSchema>;
 export type ClientWebSocketEvent = z.infer<typeof clientWebSocketEventSchema>;
@@ -264,6 +276,8 @@ export type ServerWebSocketEvent = z.infer<typeof serverWebSocketEventSchema>;
 export const roomMetadataSchema = z.object({
   roomId: z.string().min(1),
   slug: z.string().min(1),
+  mediaNodeId: z.string().min(1),
+  signalingUrl: z.string().url(),
   creatorTokenHash: z.string().min(1),
   createdAt: z.string().datetime(),
   expiresAt: z.string().datetime(),

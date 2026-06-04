@@ -62,8 +62,9 @@ jobs:
           test -n "$MVP_DEPLOY_HOST"
           test -n "$MVP_DEPLOY_USER"
           test -n "$MVP_DEPLOY_PATH"
+          test -n "$MVP_DEPLOY_SSH_KEY"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$MVP_DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan "$MVP_DEPLOY_HOST" >> ~/.ssh/known_hosts
-          ssh "$MVP_DEPLOY_USER@$MVP_DEPLOY_HOST" "cd '$MVP_DEPLOY_PATH' && git pull --ff-only && docker compose pull && docker compose up -d --build"
+          ssh "$MVP_DEPLOY_USER@$MVP_DEPLOY_HOST" "cd '$MVP_DEPLOY_PATH' && git pull --ff-only && if [ -f docker-compose.prod.yml ]; then docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build; else docker compose up -d --build; fi"

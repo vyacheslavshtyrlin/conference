@@ -36,6 +36,7 @@ Before editing, inspect current files in this scope. Do not overwrite or revert 
 - Store last display name and pre-join media preferences in `sessionStorage`.
 - Store private creator token from room creation in `sessionStorage` and send it only on creator join.
 - Redirect creator to pre-join after room creation, not directly to live conference.
+- Wire create room, room lookup and join flows to the minimal API bridge before connecting signaling.
 - Show device permission and media errors clearly.
 
 ## Review checklist before handoff
@@ -46,5 +47,6 @@ Before editing, inspect current files in this scope. Do not overwrite or revert 
 - Remote media starts after explicit user join action.
 - Creator does not become a live participant until explicit Join.
 - Creator marker from `isCreator` is displayed without adding host controls in MVP.
+- Create room -> pre-join -> join -> signaling connect works end to end.
 - Participant media state matches server events.
 - UI handles reconnecting/disconnected/error states.

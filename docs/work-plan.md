@@ -128,25 +128,35 @@ Exit criteria:
 - Creator join returns `isCreator: true`; guest join returns `isCreator: false`.
 - Response shapes match `docs/contracts.md`.
 
-## Phase 5 - Frontend WebRTC integration
+## Phase 5 - Frontend API and WebRTC integration
 
-Owner: Frontend agent + Signaling/media agent.
+Owner: Frontend agent + API agent + Signaling/media agent.
 
 1. Implement pre-join device flow.
 2. Store display name and device preferences in `sessionStorage`.
 3. Store creator token from room creation in `sessionStorage`.
 4. Redirect creator to the created room pre-join screen, not directly to live conference.
-5. Implement signaling client.
-6. Implement mediasoup client device and transports.
-7. Implement audio/video publish.
-8. Implement remote consumers and video grid.
-9. Implement mute/unmute, camera on/off and leave.
-10. Implement desktop screen share.
-11. Feature-detect mobile screen share.
-12. Show permission and device errors.
+5. Wire create room UI to `POST /api/v1/rooms`.
+6. Wire room lookup/pre-join route to `GET /api/v1/rooms/:slug`.
+7. Wire Join button to `POST /api/v1/rooms/:slug/join`.
+8. Pass `creatorToken` only for the creator join flow.
+9. Store `participantId`, `isCreator`, signaling token and `signalingUrl` after successful join.
+10. Implement signaling client connection using API-issued signaling token.
+11. Implement mediasoup client device and transports.
+12. Implement audio/video publish.
+13. Implement remote consumers and video grid.
+14. Implement mute/unmute, camera on/off and leave.
+15. Implement desktop screen share.
+16. Feature-detect mobile screen share.
+17. Show permission, room, API and signaling errors.
 
 Exit criteria:
 
+- Create room button calls API and redirects creator to created room pre-join.
+- Public room link opens pre-join and loads room metadata from API.
+- Join button calls API, receives signaling token and then connects WebSocket.
+- Guest join works without `creatorToken`.
+- Creator join sends private `creatorToken` and receives `isCreator: true`.
 - Desktop audio/video/screen share works.
 - Creator reaches pre-join first and becomes live only after explicit Join.
 - Creator is displayed as creator through `isCreator` metadata.
@@ -178,10 +188,12 @@ Owner: Reviewer agent with implementation agents.
 1. Run API tests.
 2. Run signaling tests or integration checks.
 3. Run frontend typecheck/build.
-4. Test two desktop clients in one room.
-5. Test one mobile client joining room.
-6. Verify room TTL and empty-room cleanup.
-7. Verify mandatory MVP scope:
+4. Test create room -> creator pre-join -> join -> signaling connect.
+5. Test guest public link -> pre-join -> join -> signaling connect.
+6. Test two desktop clients in one room.
+7. Test one mobile client joining room.
+8. Verify room TTL and empty-room cleanup.
+9. Verify mandatory MVP scope:
    - no auth;
    - no chat;
    - no recording implementation;
@@ -195,4 +207,4 @@ Exit criteria:
 
 ## Starting point
 
-Start with Phase 0 and Phase 1. After that, prioritize Phase 2 Signaling/media and Phase 3 Frontend shell. Phase 4 API bridge should stay minimal and unblock room creation/join tokens only. Do not add backend features beyond the API bridge unless they are required for signaling/frontend MVP or explicitly approved in architecture docs.
+Start with Phase 0 and Phase 1. After that, prioritize Phase 2 Signaling/media and Phase 3 Frontend shell. Phase 4 API bridge should stay minimal and unblock Phase 5 frontend API/WebRTC integration only. Do not add backend features beyond the API bridge unless they are required for signaling/frontend MVP or explicitly approved in architecture docs.

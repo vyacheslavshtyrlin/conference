@@ -82,6 +82,7 @@ The reviewer must check:
 - Frontend UI uses Mantine as the base component library unless a custom component is justified.
 - Creator pre-join flow is preserved: room creation does not create a live participant until explicit Join.
 - Creator metadata is preserved: creator can be marked as `isCreator` without adding host permissions in MVP.
+- Frontend/API integration is verified: create room, room lookup, join token issuing and signaling connect work as one flow.
 - Docker/TURN changes remain compatible with `docs/local-docker.md`.
 - Tests or verification are appropriate for the risk.
 

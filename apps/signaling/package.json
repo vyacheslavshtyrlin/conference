@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch src/main.ts",
     "lint": "eslint .",
-    "start": "node dist/main.js",
+    "start": "node dist/apps/signaling/src/main.js",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
@@ -15,10 +15,13 @@
     "@conference/config": "workspace:*",
     "@conference/contracts": "workspace:*",
     "@conference/logger": "workspace:*",
-    "ws": "^8.18.0"
+    "async-mutex": "^0.5.0",
+    "mediasoup": "^3.20.1",
+    "redis": "^6.0.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.13",
-    "tsx": "^4.19.2"
+    "@types/ws": "^8.5.13"
   }
 }

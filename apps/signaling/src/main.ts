@@ -1,11 +1,53 @@
 import { createServer } from "node:http";
+import { createLogger } from "@conference/logger";
+import { createClient } from "redis";
 import { WebSocketServer } from "ws";
 
-const port = Number(process.env.PORT ?? 4000);
+import { readSignalingConfig } from "./config.js";
+import { MediasoupService } from "./mediasoupService.js";
+import { RedisRoomRepository } from "./redisRoomRepository.js";
+import { RoomManager } from "./roomManager.js";
+import { SocketGateway } from "./socketGateway.js";
+
+const config = readSignalingConfig();
+const logger = createLogger("signaling");
+const redis = createClient({ url: config.redisUrl });
+
+redis.on("error", (error) => {
+  logger.error("redis error", { error: error.message });
+});
+
+await redis.connect();
+
+const repository = new RedisRoomRepository(redis);
+const mediasoup = new MediasoupService(config.mediasoup, logger);
+const roomManager = new RoomManager(repository, mediasoup, config.roomEmptyGraceMs);
+
 const server = createServer((request, response) => {
-  if (request.url === "/health") {
+  const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+
+  if (pathname === "/health") {
     response.writeHead(200, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ status: "ok", service: "signaling" }));
+    return;
+  }
+
+  if (pathname === "/ready") {
+    const redisReady = redis.isReady;
+    const mediasoupReady = mediasoup.isReady();
+    const ready = redisReady && mediasoupReady;
+
+    response.writeHead(ready ? 200 : 503, { "Content-Type": "application/json" });
+    response.end(
+      JSON.stringify({
+        status: ready ? "ok" : "unavailable",
+        service: "signaling",
+        checks: {
+          redis: redisReady ? "ok" : "unavailable",
+          mediasoup: mediasoupReady ? "ok" : "unavailable",
+        },
+      }),
+    );
     return;
   }
 
@@ -13,10 +55,64 @@ const server = createServer((request, response) => {
   response.end();
 });
 
-const wsServer = new WebSocketServer({ server, path: "/ws" });
+const wsServer = new WebSocketServer({
+  server,
+  path: "/ws",
+  maxPayload: config.websocket.maxPayloadBytes,
+});
+const gateway = new SocketGateway(wsServer, roomManager, config.joinTokenSecret, logger, config.websocket);
 
-wsServer.on("connection", (socket) => {
-  socket.send(JSON.stringify({ type: "response", requestId: "health", ok: true, data: {} }));
+gateway.start();
+
+server.listen(config.port, "0.0.0.0", () => {
+  logger.info("signaling service started", { port: config.port });
 });
 
-server.listen(port, "0.0.0.0");
+let shuttingDown = false;
+
+async function shutdown() {
+  if (shuttingDown) {
+    return;
+  }
+
+  shuttingDown = true;
+  logger.info("signaling service stopping");
+  gateway.stop();
+  await closeWebSocketServer();
+  await closeHttpServer();
+  await redis.quit();
+}
+
+process.on("SIGINT", () => {
+  void shutdown().then(() => process.exit(0));
+});
+
+process.on("SIGTERM", () => {
+  void shutdown().then(() => process.exit(0));
+});
+
+function closeWebSocketServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    wsServer.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+function closeHttpServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}

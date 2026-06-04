@@ -7,13 +7,18 @@ services:
     ports:
       - "5173:5173"
     environment:
-      VITE_API_BASE_URL: http://localhost:3000/api/v1
-      VITE_SIGNALING_URL: ws://localhost:4000/ws
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000/api/v1}
+      VITE_SIGNALING_URL: ${VITE_SIGNALING_URL:-ws://localhost:4000/ws}
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./apps/web/index.html:/app/apps/web/index.html
+      - ./apps/web/vite.config.ts:/app/apps/web/vite.config.ts
+      - ./apps/web/tsconfig.json:/app/apps/web/tsconfig.json
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       signaling:
-        condition: service_started
+        condition: service_healthy
 
   api:
     build:
@@ -26,12 +31,21 @@ services:
       NODE_ENV: development
       PORT: 3000
       REDIS_URL: redis://redis:6379
-      SIGNALING_PUBLIC_URL: ws://localhost:4000/ws
-      WEB_PUBLIC_URL: http://localhost:5173
+      MEDIA_NODE_ID: ${MEDIA_NODE_ID:-local}
+      SIGNALING_PUBLIC_URL: ${SIGNALING_PUBLIC_URL:-ws://localhost:4000/ws}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:-http://localhost:5173}
       JOIN_TOKEN_SECRET: ${JOIN_TOKEN_SECRET:-change-me-for-local-development}
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   signaling:
     build:
@@ -41,22 +55,38 @@ services:
     ports:
       - "4000:4000"
       - "40000-40100:40000-40100/udp"
+      - "40000-40100:40000-40100/tcp"
     environment:
       NODE_ENV: development
       PORT: 4000
       REDIS_URL: redis://redis:6379
+      JOIN_TOKEN_SECRET: ${JOIN_TOKEN_SECRET:-change-me-for-local-development}
+      WS_HEARTBEAT_INTERVAL_MS: ${WS_HEARTBEAT_INTERVAL_MS:-30000}
+      WS_MAX_PAYLOAD_BYTES: ${WS_MAX_PAYLOAD_BYTES:-65536}
+      WS_SEND_BACKPRESSURE_BYTES: ${WS_SEND_BACKPRESSURE_BYTES:-262144}
+      WS_RATE_LIMIT_WINDOW_MS: ${WS_RATE_LIMIT_WINDOW_MS:-10000}
+      WS_RATE_LIMIT_MAX_MESSAGES: ${WS_RATE_LIMIT_MAX_MESSAGES:-60}
+      WS_ALLOWED_ORIGINS: ${WS_ALLOWED_ORIGINS:-http://localhost:5173}
       MEDIASOUP_LISTEN_IP: 0.0.0.0
       MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
       MEDIASOUP_RTC_MIN_PORT: 40000
       MEDIASOUP_RTC_MAX_PORT: 40100
-      TURN_URL: turn:localhost:3478
-      TURN_USERNAME: conference
-      TURN_PASSWORD: conference
+      MEDIASOUP_MAX_TRANSPORTS_PER_PEER: ${MEDIASOUP_MAX_TRANSPORTS_PER_PEER:-4}
+      MEDIASOUP_MAX_PRODUCERS_PER_PEER: ${MEDIASOUP_MAX_PRODUCERS_PER_PEER:-3}
+      MEDIASOUP_MAX_CONSUMERS_PER_PEER: ${MEDIASOUP_MAX_CONSUMERS_PER_PEER:-32}
+    volumes:
+      - ./apps/signaling/src:/app/apps/signaling/src
     depends_on:
       redis:
         condition: service_healthy
       turn:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:4000/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -80,3 +110,6 @@ services:
       - --no-tls
       - --no-dtls
       - --log-file=-
+      - --listening-port=3478
+      - --min-port=49152
+      - --max-port=65535

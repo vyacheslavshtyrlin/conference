@@ -22,6 +22,8 @@ Response:
   "slug": "x7k2q9",
   "joinUrl": "http://localhost:5173/r/x7k2q9",
   "creatorToken": "short-lived-private-creator-token",
+  "mediaNodeId": "local",
+  "signalingUrl": "ws://localhost:4000/ws",
   "expiresAt": "2026-06-02T12:30:00.000Z"
 }
 ```
@@ -39,7 +41,9 @@ Response:
   "roomId": "room_01H...",
   "slug": "x7k2q9",
   "expiresAt": "2026-06-02T12:30:00.000Z",
-  "status": "active"
+  "status": "active",
+  "mediaNodeId": "local",
+  "signalingUrl": "ws://localhost:4000/ws"
 }
 ```
 
@@ -165,6 +169,8 @@ Sent after socket connection if token does not already complete the join.
 
 `appData.source` is `mic`, `camera`, or `screen`.
 
+Only one active `screen` producer is allowed per room. If another participant is already sharing a screen, `mediasoup:produce` for `appData.source: "screen"` returns an error response with code `MEDIASOUP_ERROR`.
+
 #### mediasoup:consume
 
 ```json
@@ -177,12 +183,24 @@ Sent after socket connection if token does not already complete the join.
 }
 ```
 
+#### mediasoup:closeProducer
+
+```json
+{
+  "type": "mediasoup:closeProducer",
+  "requestId": "req_7",
+  "producerId": "producer-id"
+}
+```
+
+The signaling/media service verifies that the producer belongs to the requesting participant. Closing a `screen` producer releases the room screen-share slot and emits `producer:closed`.
+
 #### media:setState
 
 ```json
 {
   "type": "media:setState",
-  "requestId": "req_7",
+  "requestId": "req_8",
   "media": {
     "mic": "muted",
     "camera": "off",
@@ -196,7 +214,7 @@ Sent after socket connection if token does not already complete the join.
 ```json
 {
   "type": "room:leave",
-  "requestId": "req_8"
+  "requestId": "req_9"
 }
 ```
 
@@ -319,6 +337,8 @@ Value:
 {
   "roomId": "room_01H...",
   "slug": "x7k2q9",
+  "mediaNodeId": "local",
+  "signalingUrl": "ws://localhost:4000/ws",
   "creatorTokenHash": "hash",
   "createdAt": "2026-06-02T12:00:00.000Z",
   "expiresAt": "2026-06-02T12:30:00.000Z",

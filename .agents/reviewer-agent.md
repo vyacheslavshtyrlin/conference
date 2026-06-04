@@ -26,6 +26,7 @@ Prioritize bugs, behavioral regressions, architecture drift, missing validation 
 - Creator pre-join is preserved: `POST /rooms` does not create a live participant.
 - Creator marker is preserved through `isCreator` without introducing host permissions.
 - Backend remains secondary/minimal; new API scope must be justified by signaling/frontend MVP needs.
+- Frontend/API integration works: create room, room lookup, join token and signaling connect are verified as one user flow.
 - REST and WebSocket payloads match `docs/contracts.md`.
 - Room lifecycle, TTL and cleanup match `docs/architecture.md`.
 - Redis stores only serializable state.

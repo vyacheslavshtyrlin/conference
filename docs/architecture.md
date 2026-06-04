@@ -175,3 +175,20 @@ MVP запускается как один signaling/media instance. Для го
 - API знает, на какой media node назначена комната;
 - PostgreSQL для persistent rooms/users/recordings;
 - отдельный TURN в публичной сети.
+
+## Media node ownership
+
+For MVP, deployment uses one signaling/media instance. The room model still records media node ownership so the architecture can later run more than one signaling/media instance without changing room contracts.
+
+- Every room is owned by exactly one signaling/media instance.
+- mediasoup runtime objects remain process-local: `Worker`, `Router`, `Transport`, `Producer`, `Consumer`, WebSocket connections, timers and callbacks are not stored in Redis.
+- Redis stores only serializable room/session state, including assigned `mediaNodeId` and `signalingUrl`.
+- API assigns the media node when the room is created and returns the saved `signalingUrl` when issuing join tokens.
+- Random round-robin WebSocket load balancing is not valid for participants of the same room.
+- If multiple signaling/media instances are deployed, routing must be room-sticky or clients must connect directly to the room's assigned `signalingUrl`.
+
+For MVP, `mediaNodeId` is usually `local` and `signalingUrl` comes from `SIGNALING_PUBLIC_URL`. Future deployments can replace that with a media node registry or scheduler.
+
+## Screen share ownership
+
+Only one active screen share producer is allowed per room. The signaling/media service enforces this when handling `mediasoup:produce` with `appData.source = "screen"`, so clients cannot bypass the limit by skipping frontend checks. Clients must stop screen sharing by sending `mediasoup:closeProducer` for the active screen producer; this releases the room screen-share slot and broadcasts `producer:closed`. When the active screen producer closes or the participant leaves, another participant can start screen sharing.
