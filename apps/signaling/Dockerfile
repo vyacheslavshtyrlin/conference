@@ -32,6 +32,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages ./packages
 COPY --from=deps /app/apps/signaling/package.json ./apps/signaling/package.json
 COPY --from=build /app/apps/signaling/dist ./apps/signaling/dist
+RUN mkdir -p node_modules/@conference && \
+  rm -rf node_modules/@conference/config node_modules/@conference/contracts node_modules/@conference/logger && \
+  ln -s ../../packages/config node_modules/@conference/config && \
+  ln -s ../../packages/contracts node_modules/@conference/contracts && \
+  ln -s ../../packages/logger node_modules/@conference/logger
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD wget -q --spider http://127.0.0.1:4000/health || exit 1

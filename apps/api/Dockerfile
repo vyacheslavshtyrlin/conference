@@ -32,6 +32,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages ./packages
 COPY --from=deps /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build /app/apps/api/dist ./apps/api/dist
+RUN mkdir -p node_modules/@conference && \
+  rm -rf node_modules/@conference/config node_modules/@conference/contracts node_modules/@conference/logger && \
+  ln -s ../../packages/config node_modules/@conference/config && \
+  ln -s ../../packages/contracts node_modules/@conference/contracts && \
+  ln -s ../../packages/logger node_modules/@conference/logger
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD wget -q --spider http://127.0.0.1:3000/api/v1/health || exit 1
