@@ -70,10 +70,18 @@ jobs:
           MVP_DEPLOY_PATH: ${{ secrets.MVP_DEPLOY_PATH }}
           MVP_DEPLOY_SSH_KEY: ${{ secrets.MVP_DEPLOY_SSH_KEY }}
         run: |
-          test -n "$MVP_DEPLOY_HOST"
-          test -n "$MVP_DEPLOY_USER"
-          test -n "$MVP_DEPLOY_PATH"
-          test -n "$MVP_DEPLOY_SSH_KEY"
+          require_secret() {
+            name="$1"
+            value="$2"
+            if [ -z "$value" ]; then
+              echo "::error::Missing required GitHub secret: $name"
+              exit 1
+            fi
+          }
+          require_secret "MVP_DEPLOY_HOST" "$MVP_DEPLOY_HOST"
+          require_secret "MVP_DEPLOY_USER" "$MVP_DEPLOY_USER"
+          require_secret "MVP_DEPLOY_PATH" "$MVP_DEPLOY_PATH"
+          require_secret "MVP_DEPLOY_SSH_KEY" "$MVP_DEPLOY_SSH_KEY"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$MVP_DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519

@@ -1,97 +1,35 @@
-import { Drawer } from "@mantine/core";
+import { ActionIcon, Alert, Anchor, Badge, Box, Button, Drawer, Group, Loader, Modal, Text } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
+import { Camera, CameraOff, LogOut, Mic, MicOff, MonitorUp, Share2, Users, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useLocalMediaStore } from "../../shared/stores/localMediaStore";
 import { useRoomStore } from "../../shared/stores/roomStore";
 import { useConference } from "../../shared/webrtc/useConference";
-import { VideoGrid } from "./VideoGrid";
 import { ParticipantList } from "./ParticipantList";
+import { VideoGrid } from "./VideoGrid";
 
 type ConferenceRoomPageProps = { slug: string };
 
-/* ── Inline SVG icons ─────────────────────────────────────── */
-function IconMic({ on }: { on: boolean }) {
-  return on ? (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={20} height={20}>
-      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-      <line x1="12" y1="19" x2="12" y2="22" />
-      <line x1="8" y1="22" x2="16" y2="22" />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={20} height={20}>
-      <line x1="2" y1="2" x2="22" y2="22" />
-      <path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2" />
-      <path d="M5 10v2a7 7 0 0 0 11.9 5.2" />
-      <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33" />
-      <path d="M9 9v3a3 3 0 0 0 2.83 3" />
-      <line x1="12" y1="19" x2="12" y2="22" />
-      <line x1="8" y1="22" x2="16" y2="22" />
-    </svg>
-  );
-}
-
-function IconCamera({ on }: { on: boolean }) {
-  return on ? (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={20} height={20}>
-      <polygon points="23 7 16 12 23 17 23 7" />
-      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={20} height={20}>
-      <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34" />
-      <line x1="23" y1="7" x2="23" y2="17" />
-      <path d="M17 12l6-5" />
-      <line x1="2" y1="2" x2="22" y2="22" />
-    </svg>
-  );
-}
-
-function IconScreen({ on }: { on: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={20} height={20}>
-      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-      <line x1="8" y1="21" x2="16" y2="21" />
-      <line x1="12" y1="17" x2="12" y2="21" />
-    </svg>
-  );
-}
-
-function IconUsers() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={18} height={18}>
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
-
-function IconShare() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={18} height={18}>
-      <circle cx="18" cy="5" r="3" />
-      <circle cx="6" cy="12" r="3" />
-      <circle cx="18" cy="19" r="3" />
-      <path d="M8.6 10.5 15.4 6.5" />
-      <path d="M8.6 13.5 15.4 17.5" />
-    </svg>
-  );
-}
-
-function IconLeave() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={18} height={18}>
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
+function formatConferenceConnectionState(state: string): string {
+  switch (state) {
+    case "connecting":
+      return "Подключение";
+    case "connected":
+      return "Подключено";
+    case "disconnected":
+      return "Нет связи";
+    case "error":
+      return "Ошибка";
+    default:
+      return state;
+  }
 }
 
 export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
   const [participantsOpen, participantsDrawer] = useDisclosure(false);
+  const [leaveConfirmOpen, leaveConfirm] = useDisclosure(false);
+  const connectedToastShownRef = useRef(false);
 
   const micEnabled = useLocalMediaStore((s) => s.micEnabled);
   const cameraEnabled = useLocalMediaStore((s) => s.cameraEnabled);
@@ -114,7 +52,7 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
           onScreenShareBlocked: (message) => {
             notifications.show({
               color: "yellow",
-              title: "Screen share is already active",
+              title: "Демонстрация уже запущена",
               message,
             });
           },
@@ -129,28 +67,12 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
           onScreenShareBlocked: (message) => {
             notifications.show({
               color: "yellow",
-              title: "Screen share is already active",
+              title: "Демонстрация уже запущена",
               message,
             });
           },
         },
   );
-
-  if (!hasJoinResult) {
-    return (
-      <div className="page-shell">
-        <div className="alert alert--warn" style={{ maxWidth: 480, width: "100%" }}>
-          No join result found.{" "}
-          <button
-            onClick={() => resetRoom()}
-            style={{ background: "none", border: "none", color: "inherit", textDecoration: "underline", cursor: "pointer", padding: 0, font: "inherit" }}
-          >
-            Back to pre-join
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const {
     connectionState,
@@ -169,9 +91,61 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
     leave,
   } = conference;
 
+  useEffect(() => {
+    if (!hasJoinResult || connectedToastShownRef.current || connectionState !== "connected") return;
+
+    connectedToastShownRef.current = true;
+    notifications.show({
+      color: "teal",
+      title: "Вы подключились",
+      message: "Комната готова к встрече.",
+    });
+  }, [connectionState, hasJoinResult]);
+
+  if (!hasJoinResult) {
+    return (
+      <Box className="page-shell">
+        <Alert className="alert alert--warn" color="yellow" maw={480} w="100%">
+          Нет данных для входа.{" "}
+          <Button variant="subtle" color="yellow" size="compact-sm" onClick={() => resetRoom()}>
+            Вернуться к проверке устройств
+          </Button>
+        </Alert>
+      </Box>
+    );
+  }
+
   const connDotClass = `conn-dot conn-dot--${connectionState}`;
+  const remoteScreenParticipant = participants.find(
+    (p) => p.participantId !== participantId && p.media.screen === "on",
+  );
+  const isScreenShareBusy = Boolean(remoteScreenParticipant && !screenEnabled);
+
+  const handleScreenShareClick = () => {
+    if (screenEnabled) {
+      void stopScreenShare();
+      return;
+    }
+
+    if (isScreenShareBusy) {
+      notifications.show({
+        color: "yellow",
+        title: "Экран уже показывают",
+        message: `${remoteScreenParticipant?.displayName ?? "Другой участник"} сейчас демонстрирует экран.`,
+      });
+      return;
+    }
+
+    void startScreenShare();
+  };
+
+  const handleLeaveConfirm = () => {
+    leaveConfirm.close();
+    leave();
+  };
+
   const handleShareLink = async () => {
-    const shareUrl = `${window.location.origin}/комната/${slug}`;
+    const shareUrl = `${window.location.origin}/r/${slug}`;
     const shareData = {
       title: "Comet",
       text: "Ссылка на трансляцию",
@@ -210,134 +184,182 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
   };
 
   return (
-    <div className="conf-shell">
-      {/* ── Topbar ── */}
-      <div className="conf-topbar">
-        <div className="conf-topbar-left">
-          <a className="app-logo" href="/" onClick={(e) => { e.preventDefault(); }}>
-            <span className="app-logo-dot" />
-            Comet
-          </a>
-          <span className="conf-room-code">{slug}</span>
-        </div>
-
-        <div className="conf-topbar-right">
-          {error && (
-            <span className="alert alert--error" style={{ padding: "4px 10px", margin: 0, fontSize: 12 }}>
-              {error}
-              <button className="alert-close" onClick={conference.clearError}>
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" width={12} height={12}>
-                  <line x1="3" y1="3" x2="13" y2="13" /><line x1="13" y1="3" x2="3" y2="13" />
-                </svg>
-              </button>
+    <Box className="conf-shell">
+      <Box className="conf-topbar">
+        <Group className="conf-topbar-left" gap={12}>
+          <Anchor
+            className="app-logo"
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+            }}
+          >
+            <span className="app-logo-comet" aria-hidden="true">
+              <span className="app-logo-comet__tail" />
+              <span className="app-logo-comet__wake" />
+              <span className="app-logo-comet__core" />
+              <span className="app-logo-comet__spark" />
             </span>
-          )}
-          {connectionState === "disconnected" && (
-            <button
-              onClick={() => resetRoom()}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--warn)", fontSize: 12, padding: 0, font: "inherit" }}
+            Comet
+          </Anchor>
+          <Badge className="conf-room-code" variant="light">{slug}</Badge>
+        </Group>
+
+        <Group className="conf-topbar-right" gap={10}>
+          {error && (
+            <Alert
+              className="conf-error-alert"
+              color="red"
+              variant="light"
+              py={4}
+              px={10}
+              withCloseButton
+              closeButtonLabel="Закрыть"
+              onClose={conference.clearError}
             >
-              Reconnect
-            </button>
+              {error}
+            </Alert>
           )}
-          <button
+
+          {connectionState === "disconnected" && (
+            <Button
+              variant="subtle"
+              color="yellow"
+              size="compact-sm"
+              onClick={() => resetRoom()}
+            >
+              Подключиться заново
+            </Button>
+          )}
+
+          <Button
             className="conf-share-btn"
-            type="button"
+            variant="subtle"
+            leftSection={<Share2 size={18} />}
             aria-label="Поделиться ссылкой на трансляцию"
             title="Поделиться ссылкой"
             onClick={() => { void handleShareLink(); }}
           >
-            <IconShare />
             <span className="conf-share-label">Поделиться</span>
-          </button>
-          <div className="conf-conn">
+          </Button>
+
+          <Box className="conf-conn">
             <span className={connDotClass} />
-            {connectionState}
-          </div>
-        </div>
-      </div>
+            {formatConferenceConnectionState(connectionState)}
+          </Box>
+        </Group>
+      </Box>
 
-      {/* ── Video area ── */}
-      <div className="conf-video-area">
-        <VideoGrid
-          selfParticipantId={participantId!}
-          localStream={localStream}
-          screenStream={screenStream}
-          localCameraEnabled={conference.cameraEnabled}
-          localScreenEnabled={screenEnabled}
-          participants={participants}
-          remoteVideoTracks={remoteVideoTracks}
-          remoteAudioTracks={remoteAudioTracks}
-        />
-      </div>
+      <Box className="conf-video-area">
+        {connectionState === "connecting" ? (
+          <Box className="conference-loading" role="status">
+            <Box className="conference-loading__tile" />
+            <Box className="conference-loading__panel">
+              <Loader size="xs" color="teal" />
+              <Text component="span">Подключаемся к комнате...</Text>
+            </Box>
+          </Box>
+        ) : (
+          <VideoGrid
+            selfParticipantId={participantId!}
+            localStream={localStream}
+            screenStream={screenStream}
+            localCameraEnabled={conference.cameraEnabled}
+            localScreenEnabled={screenEnabled}
+            participants={participants}
+            remoteVideoTracks={remoteVideoTracks}
+            remoteAudioTracks={remoteAudioTracks}
+            onShareLink={handleShareLink}
+          />
+        )}
+      </Box>
 
-      {/* ── Control bar ── */}
-      <div className="conf-control-bar">
-        {/* Center: media controls */}
-        <div className="ctrl-spacer" />
+      <Box className="conf-control-bar">
+        <Box className="ctrl-spacer" />
 
-        <div className="ctrl-group">
-          <button
+        <Group className="ctrl-group" gap={8}>
+          <ActionIcon
             className={`ctrl-btn ${conference.micEnabled ? "ctrl-btn--on" : ""}`}
+            variant="subtle"
             onClick={toggleMic}
-            title={conference.micEnabled ? "Mute" : "Unmute"}
-            aria-label={conference.micEnabled ? "Mute microphone" : "Unmute microphone"}
+            title={conference.micEnabled ? "Выключить микрофон" : "Включить микрофон"}
+            aria-label={conference.micEnabled ? "Выключить микрофон" : "Включить микрофон"}
           >
-            <IconMic on={conference.micEnabled} />
-          </button>
+            {conference.micEnabled ? <Mic size={20} /> : <MicOff size={20} />}
+          </ActionIcon>
 
-          <button
+          <ActionIcon
             className={`ctrl-btn ${conference.cameraEnabled ? "ctrl-btn--on" : ""}`}
+            variant="subtle"
             onClick={toggleCamera}
-            title={conference.cameraEnabled ? "Turn camera off" : "Turn camera on"}
-            aria-label={conference.cameraEnabled ? "Turn camera off" : "Turn camera on"}
+            title={conference.cameraEnabled ? "Выключить камеру" : "Включить камеру"}
+            aria-label={conference.cameraEnabled ? "Выключить камеру" : "Включить камеру"}
           >
-            <IconCamera on={conference.cameraEnabled} />
-          </button>
+            {conference.cameraEnabled ? <Camera size={20} /> : <CameraOff size={20} />}
+          </ActionIcon>
 
           {canShareScreen && (
-            <button
-              className={`ctrl-btn ${screenEnabled ? "ctrl-btn--on" : ""}`}
-              onClick={screenEnabled ? () => { void stopScreenShare(); } : () => { void startScreenShare(); }}
-              title={screenEnabled ? "Stop sharing" : "Share screen"}
-              aria-label={screenEnabled ? "Stop screen share" : "Share screen"}
+            <ActionIcon
+              className={`ctrl-btn ${screenEnabled ? "ctrl-btn--on" : ""} ${isScreenShareBusy ? "ctrl-btn--disabled" : ""}`}
+              variant="subtle"
+              onClick={handleScreenShareClick}
+              title={screenEnabled ? "Остановить демонстрацию" : isScreenShareBusy ? "Экран уже показывают" : "Показать экран"}
+              aria-label={screenEnabled ? "Остановить демонстрацию экрана" : isScreenShareBusy ? "Экран уже показывают" : "Показать экран"}
+              aria-disabled={isScreenShareBusy}
             >
-              <IconScreen on={screenEnabled} />
-            </button>
+              <MonitorUp size={20} fill={screenEnabled ? "currentColor" : "none"} />
+            </ActionIcon>
           )}
-        </div>
+        </Group>
 
-        {/* Right: secondary actions */}
-        <div className="ctrl-group ctrl-group--secondary">
-          <button className="ctrl-label-btn" onClick={participantsDrawer.open}>
-            <IconUsers />
-            <span className="ctrl-label-text">Participants</span>
-            <span className="badge-count">{participants.length}</span>
-          </button>
+        <Group className="ctrl-group ctrl-group--secondary" gap={8}>
+          <Button
+            className="ctrl-label-btn"
+            variant="subtle"
+            leftSection={<Users size={18} />}
+            rightSection={<Badge className="badge-count">{participants.length}</Badge>}
+            onClick={participantsDrawer.open}
+          >
+            <span className="ctrl-label-text">Участники</span>
+          </Button>
 
-          <button className="ctrl-leave-btn" onClick={leave}>
-            <IconLeave />
-            <span className="ctrl-label-text">Leave</span>
-          </button>
-        </div>
-      </div>
+          <Button
+            className="ctrl-leave-btn"
+            variant="subtle"
+            leftSection={<LogOut size={18} />}
+            onClick={leaveConfirm.open}
+          >
+            <span className="ctrl-label-text">Выйти</span>
+          </Button>
+        </Group>
+      </Box>
 
-      {/* ── Participants drawer ── */}
       <Drawer
         opened={participantsOpen}
         onClose={participantsDrawer.close}
-        title="Participants"
+        title="Участники"
         position="right"
         size="sm"
-        styles={{
-          content: { backgroundColor: "#0a1020", borderLeft: "1px solid rgba(255,255,255,0.07)" },
-          header: { backgroundColor: "#0a1020", borderBottom: "1px solid rgba(255,255,255,0.07)", paddingBottom: 14 },
-          title: { fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: "#edf2f7" },
-          close: { color: "#7a90a8" },
-        }}
       >
         <ParticipantList participants={participants} />
       </Drawer>
-    </div>
+
+      <Modal
+        opened={leaveConfirmOpen}
+        onClose={leaveConfirm.close}
+        title="Выйти из комнаты?"
+        centered
+      >
+        <Text c="dimmed" size="sm" mb="md">
+          Вы отключитесь от звонка. Вернуться можно будет по ссылке комнаты, пока она активна.
+        </Text>
+        <Group justify="flex-end">
+          <Button variant="subtle" onClick={leaveConfirm.close}>Остаться</Button>
+          <Button color="red" leftSection={<X size={16} />} onClick={handleLeaveConfirm}>
+            Выйти
+          </Button>
+        </Group>
+      </Modal>
+    </Box>
   );
 }

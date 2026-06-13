@@ -1,4 +1,6 @@
+import { Alert, Badge, Box, Button, Group, Loader, Paper, Stack, Switch, Text, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { AlertCircle, ArrowRight, Camera, CameraOff, Mic } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useJoinRoomMutation, useRoom } from "../../shared/api/roomQueries";
 import { creatorTokenKey } from "../../shared/storage/sessionStorageKeys";
@@ -36,8 +38,8 @@ function CameraPreview({ enabled }: { enabled: boolean }) {
         setPreviewError(
           err instanceof Error &&
             (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")
-            ? "Camera access was denied."
-            : "Could not access camera.",
+            ? "Доступ к камере запрещен."
+            : "Не удалось получить доступ к камере.",
         );
       });
 
@@ -49,8 +51,7 @@ function CameraPreview({ enabled }: { enabled: boolean }) {
   }, [enabled]);
 
   return (
-    <div className="camera-preview">
-      {/* Hidden video always rendered so srcObject can be set */}
+    <Box className="camera-preview">
       <video
         ref={videoRef}
         autoPlay
@@ -58,44 +59,21 @@ function CameraPreview({ enabled }: { enabled: boolean }) {
         muted
         style={{ display: enabled && !previewError ? "block" : "none" }}
       />
+
       {!enabled && (
-        <div className="camera-placeholder">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            width={32}
-            height={32}
-          >
-            <polygon points="23 7 16 12 23 17 23 7" />
-            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-          </svg>
-          <p>Camera is off</p>
-        </div>
+        <Box className="camera-placeholder">
+          <CameraOff size={32} strokeWidth={1.5} />
+          <Text component="p">Камера выключена</Text>
+        </Box>
       )}
+
       {enabled && previewError && (
-        <div className="camera-placeholder">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            width={32}
-            height={32}
-          >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          <p>{previewError}</p>
-        </div>
+        <Box className="camera-placeholder">
+          <AlertCircle size={32} strokeWidth={1.5} />
+          <Text component="p">{previewError}</Text>
+        </Box>
       )}
-    </div>
+    </Box>
   );
 }
 
@@ -116,6 +94,20 @@ export function PreJoinPage({ slug }: PreJoinPageProps) {
     else setPrejoinRoom({ slug });
   }, [roomQuery.data, setPrejoinRoom, slug]);
 
+  if (roomQuery.isLoading) {
+    return (
+      <Box className="page-shell">
+        <Paper className="prejoin-loading" role="status">
+          <Box className="prejoin-loading__preview" />
+          <Box className="prejoin-loading__content">
+            <Loader size="xs" color="teal" />
+            <Text component="span">Проверяем комнату...</Text>
+          </Box>
+        </Paper>
+      </Box>
+    );
+  }
+
   const canJoin = displayName.trim().length > 0;
   const isExpiredOrMissing = roomQuery.isError;
 
@@ -123,8 +115,8 @@ export function PreJoinPage({ slug }: PreJoinPageProps) {
     if (!canJoin) {
       notifications.show({
         color: "red",
-        title: "Display name required",
-        message: "Enter the name other participants will see.",
+        title: "Укажите имя",
+        message: "Введите имя, которое увидят другие участники.",
       });
       return;
     }
@@ -145,8 +137,8 @@ export function PreJoinPage({ slug }: PreJoinPageProps) {
         onError: (err) => {
           notifications.show({
             color: "red",
-            title: "Could not join room",
-            message: err instanceof Error ? err.message : "Try again later.",
+            title: "Не удалось войти в комнату",
+            message: err instanceof Error ? err.message : "Попробуйте позже.",
           });
         },
       },
@@ -156,129 +148,99 @@ export function PreJoinPage({ slug }: PreJoinPageProps) {
   const isActive = roomQuery.data?.status === "active";
 
   return (
-    <div className="page-shell">
-      <div className="prejoin-grid">
-        {/* ─── Left panel: join form ─── */}
-        <div className="glass-panel">
-          {/* Room code + status row */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
-            <span className="prejoin-room-tag">{slug}</span>
-            {!roomQuery.isLoading && (
-              <span className={`room-badge ${isActive ? "room-badge--active" : "room-badge--inactive"}`}>
-                <span className="room-badge-dot" />
-                {roomQuery.data?.status ?? "Pending"}
-              </span>
-            )}
-          </div>
+    <Box className="page-shell">
+      <Box className="prejoin-grid">
+        <Paper className="glass-panel">
+          <Group justify="space-between" align="center" mb={20}>
+            <Badge className="prejoin-room-tag" variant="light">{slug}</Badge>
+            <Badge
+              className={`room-badge ${isActive ? "room-badge--active" : "room-badge--inactive"}`}
+              leftSection={<span className="room-badge-dot" />}
+              variant="light"
+            >
+              {isActive ? "Активна" : "Ожидает"}
+            </Badge>
+          </Group>
 
-          <h2 className="prejoin-title">Ready to join?</h2>
-          <p className="prejoin-subtitle">Set up your display name and devices below.</p>
+          <Title order={2} className="prejoin-title">Готовы подключиться?</Title>
+          <Text component="p" className="prejoin-subtitle">
+            Проверьте имя, микрофон и камеру перед входом.
+          </Text>
 
           {isExpiredOrMissing && (
-            <div className="alert alert--error">
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={16} height={16} style={{ flexShrink: 0, marginTop: 1 }}>
-                <circle cx="10" cy="10" r="8" />
-                <line x1="10" y1="6" x2="10" y2="10" />
-                <line x1="10" y1="13" x2="10.01" y2="13" />
-              </svg>
-              Room not available. It may have expired — ask for a new link.
-            </div>
+            <Alert
+              className="alert alert--error"
+              color="red"
+              icon={<AlertCircle size={16} />}
+              mb={18}
+            >
+              Комната недоступна. Возможно, срок действия истек. Попросите новую ссылку.
+            </Alert>
           )}
 
-          <div className="form-field">
-            <label className="form-label" htmlFor="display-name">
-              Your name
-            </label>
-            <input
+          <Stack gap={18}>
+            <TextInput
               id="display-name"
-              className="form-input"
-              type="text"
-              placeholder="Alex"
+              label="Ваше имя"
+              placeholder="Алексей"
               autoComplete="name"
               value={displayName}
               onChange={(e) => setDisplayName(e.currentTarget.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleJoin();
               }}
+              classNames={{ root: "form-field", label: "form-label", input: "form-input" }}
             />
-          </div>
 
-          <div className="toggle-rows">
-            <div className="toggle-row">
-              <span className="toggle-row-label">
-                <span className="toggle-row-icon">
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={16} height={16}>
-                    <path d="M10 2a2.5 2.5 0 0 0-2.5 2.5v5a2.5 2.5 0 0 0 5 0V4.5A2.5 2.5 0 0 0 10 2Z" />
-                    <path d="M16 9.5v.5a6 6 0 0 1-12 0v-.5" />
-                    <line x1="10" y1="16" x2="10" y2="19" />
-                    <line x1="7" y1="19" x2="13" y2="19" />
-                  </svg>
-                </span>
-                Microphone on when joining
-              </span>
-              <label className="toggle">
-                <input
-                  type="checkbox"
+            <Stack className="toggle-rows" gap={10}>
+              <Group className="toggle-row" justify="space-between" wrap="nowrap">
+                <Group className="toggle-row-label" gap={10}>
+                  <Mic size={16} strokeWidth={1.8} />
+                  <Text component="span">Войти с микрофоном</Text>
+                </Group>
+                <Switch
                   checked={micEnabled}
                   onChange={(e) => setMicEnabled(e.currentTarget.checked)}
+                  aria-label="Войти с микрофоном"
                 />
-                <span className="toggle-track" />
-              </label>
-            </div>
+              </Group>
 
-            <div className="toggle-row">
-              <span className="toggle-row-label">
-                <span className="toggle-row-icon">
-                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={16} height={16}>
-                    <polygon points="19 6 13 10 19 14 19 6" />
-                    <rect x="1" y="4" width="12" height="12" rx="2" />
-                  </svg>
-                </span>
-                Camera on when joining
-              </span>
-              <label className="toggle">
-                <input
-                  type="checkbox"
+              <Group className="toggle-row" justify="space-between" wrap="nowrap">
+                <Group className="toggle-row-label" gap={10}>
+                  <Camera size={16} strokeWidth={1.8} />
+                  <Text component="span">Войти с камерой</Text>
+                </Group>
+                <Switch
                   checked={cameraEnabled}
                   onChange={(e) => setCameraEnabled(e.currentTarget.checked)}
+                  aria-label="Войти с камерой"
                 />
-                <span className="toggle-track" />
-              </label>
-            </div>
-          </div>
+              </Group>
+            </Stack>
 
-          <button
-            className="join-btn"
-            disabled={!canJoin || isExpiredOrMissing || joinMutation.isPending}
-            onClick={handleJoin}
-          >
-            {joinMutation.isPending ? (
-              <>
-                <span className="spinner" />
-                Joining…
-              </>
-            ) : (
-              <>
-                Join room
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={17} height={17}>
-                  <path d="M4 10h12M11 5l5 5-5 5" />
-                </svg>
-              </>
-            )}
-          </button>
-        </div>
+            <Button
+              className="join-btn"
+              disabled={!canJoin || isExpiredOrMissing}
+              loading={joinMutation.isPending}
+              loaderProps={{ type: "oval" }}
+              rightSection={!joinMutation.isPending ? <ArrowRight size={17} /> : undefined}
+              onClick={handleJoin}
+            >
+              {joinMutation.isPending ? "Подключаемся..." : "Войти в комнату"}
+            </Button>
+          </Stack>
+        </Paper>
 
-        {/* ─── Right panel: camera preview ─── */}
-        <div className="glass-panel">
-          <p className="preview-panel-title">Device preview</p>
+        <Paper className="glass-panel">
+          <Text component="p" className="preview-panel-title">Проверка устройств</Text>
           <CameraPreview enabled={cameraEnabled} />
-          <p className="camera-hint">
+          <Text component="p" className="camera-hint">
             {cameraEnabled
-              ? "Your stream starts only after you click Join."
-              : "Enable the camera toggle on the left to see a preview."}
-          </p>
-        </div>
-      </div>
-    </div>
+              ? "Трансляция начнется только после входа в комнату."
+              : "Включите камеру, чтобы увидеть превью."}
+          </Text>
+        </Paper>
+      </Box>
+    </Box>
   );
 }

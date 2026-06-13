@@ -1,3 +1,6 @@
+import { ActionIcon, Box, Text } from "@mantine/core";
+import { Maximize2 } from "lucide-react";
+import type { MouseEvent } from "react";
 import { useEffect, useRef } from "react";
 
 type VideoTileProps = {
@@ -8,7 +11,9 @@ type VideoTileProps = {
   muted?: boolean;
   cameraOff?: boolean;
   presentation?: boolean;
+  selected?: boolean;
   fullscreenLabel?: string;
+  onSelect?: () => void;
   onOpenFullscreen?: () => void;
 };
 
@@ -20,7 +25,9 @@ export function VideoTile({
   muted = false,
   cameraOff = false,
   presentation = false,
-  fullscreenLabel = "Open fullscreen",
+  selected = false,
+  fullscreenLabel = "Открыть на весь экран",
+  onSelect,
   onOpenFullscreen,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -51,10 +58,20 @@ export function VideoTile({
 
   const hasVideo = !cameraOff && (stream != null || track != null);
   const initials = label.slice(0, 2).toUpperCase();
+  const isSelectable = Boolean(onSelect);
 
   return (
-    <div className={`video-tile ${presentation ? "video-tile--presentation" : ""}`}>
-      {/* Video always rendered; visibility toggled */}
+    <Box
+      className={`video-tile ${presentation ? "video-tile--presentation" : ""} ${selected ? "video-tile--selected" : ""} ${isSelectable ? "video-tile--selectable" : ""}`}
+      role={isSelectable ? "button" : undefined}
+      tabIndex={isSelectable ? 0 : undefined}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (!onSelect || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        onSelect();
+      }}
+    >
       <video
         ref={videoRef}
         autoPlay
@@ -64,43 +81,32 @@ export function VideoTile({
       />
 
       {!hasVideo && (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div className="video-tile__avatar">{initials}</div>
-          <p className="video-tile__cam-off-text">Camera off</p>
-        </div>
+        <Box className="video-tile__empty">
+          <Box className="video-tile__avatar">{initials}</Box>
+          <Text component="p" className="video-tile__cam-off-text">Камера выключена</Text>
+        </Box>
       )}
 
-      <div className="video-tile__label">
-        <span className="video-tile__name">{label}</span>
-        {isCreator && <span className="video-tile__creator">Host</span>}
-      </div>
+      <Box className="video-tile__label">
+        <Text component="span" className="video-tile__name">{label}</Text>
+        {isCreator && <Text component="span" className="video-tile__creator">Создатель</Text>}
+      </Box>
 
       {hasVideo && onOpenFullscreen && (
-        <button
+        <ActionIcon
           className="video-tile__fullscreen"
-          type="button"
           aria-label={fullscreenLabel}
           title={fullscreenLabel}
-          onClick={onOpenFullscreen}
+          variant="subtle"
+          onClick={(event: MouseEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
+            onOpenFullscreen();
+          }}
         >
-          <svg
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            width={16}
-            height={16}
-          >
-            <path d="M7 3H3v4" />
-            <path d="M13 3h4v4" />
-            <path d="M17 13v4h-4" />
-            <path d="M3 13v4h4" />
-          </svg>
-        </button>
+          <Maximize2 size={16} strokeWidth={1.8} />
+        </ActionIcon>
       )}
-    </div>
+    </Box>
   );
 }
 

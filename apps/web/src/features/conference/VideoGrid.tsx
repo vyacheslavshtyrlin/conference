@@ -1,4 +1,6 @@
 import type { Participant } from "@conference/contracts";
+import { ActionIcon, Box, Button, Text } from "@mantine/core";
+import { RotateCcw, X } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useState } from "react";
 import type { RemoteTrackInfo } from "../../shared/webrtc/useConference";
@@ -13,6 +15,7 @@ type VideoGridProps = {
   participants: Participant[];
   remoteVideoTracks: RemoteTrackInfo[];
   remoteAudioTracks: RemoteTrackInfo[];
+  onShareLink?: () => void | Promise<void>;
 };
 
 type TileInfo = {
@@ -49,11 +52,14 @@ export function VideoGrid({
   participants,
   remoteVideoTracks,
   remoteAudioTracks,
+  onShareLink,
 }: VideoGridProps) {
   const [fullscreenTile, setFullscreenTile] = useState<TileInfo | null>(null);
   const [fullscreenZoom, setFullscreenZoom] = useState(1);
+  const [spotlightTileKey, setSpotlightTileKey] = useState<string | null>(null);
   const self = participants.find((p) => p.participantId === selfParticipantId);
   const remoteParticipants = participants.filter((p) => p.participantId !== selfParticipantId);
+  const hasOnlySelf = remoteParticipants.length === 0;
 
   const cameraTrackByParticipant = new Map<string, RemoteTrackInfo>();
   for (const t of remoteVideoTracks) {
@@ -75,7 +81,7 @@ export function VideoGrid({
     localScreenEnabled && screenStream
       ? {
           key: `${selfParticipantId}:screen`,
-          label: `${self?.displayName ?? "You"} (screen)`,
+          label: `Экран: ${self?.displayName ?? "Вы"}`,
           stream: screenStream,
           track: null,
           muted: true,
@@ -83,7 +89,7 @@ export function VideoGrid({
       : screenSharingRemote
         ? {
             key: `${screenSharingRemote.participantId}:screen`,
-            label: `${screenSharingRemote.displayName} (screen)`,
+            label: `Экран: ${screenSharingRemote.displayName}`,
             stream: null,
             track: remoteScreenTrack!.track,
             muted: false,
@@ -91,7 +97,7 @@ export function VideoGrid({
         : remoteScreenTrack
           ? {
               key: `${remoteScreenTrack.participantId}:screen`,
-              label: "Screen share",
+              label: "Демонстрация экрана",
               stream: null,
               track: remoteScreenTrack.track,
               muted: false,
@@ -101,7 +107,7 @@ export function VideoGrid({
   const cameraTiles = [
     {
       key: selfParticipantId,
-      label: self?.displayName ?? "You",
+      label: "Вы",
       isCreator: self?.isCreator,
       stream: localStream,
       track: null,
@@ -125,6 +131,13 @@ export function VideoGrid({
   ].filter((tile) => tile.key !== activeScreenParticipantId);
 
   const tileCount = cameraTiles.length;
+  const spotlightTile =
+    !activeScreenTile && tileCount > 1
+      ? cameraTiles.find((tile) => tile.key === spotlightTileKey) ?? null
+      : null;
+  const sideTiles = spotlightTile
+    ? cameraTiles.filter((tile) => tile.key !== spotlightTile.key)
+    : cameraTiles;
   const openFullscreen = (tile: TileInfo) => {
     setFullscreenZoom(1);
     setFullscreenTile(tile);
@@ -143,12 +156,12 @@ export function VideoGrid({
       ))}
 
       {activeScreenTile ? (
-        <div
+        <Box
           className={`video-stage video-stage--screen ${
             cameraTiles.length > 0 ? "video-stage--with-participants" : ""
           }`}
         >
-          <div className="video-stage__main">
+          <Box className="video-stage__main">
             <VideoTile
               key={activeScreenTile.key}
               label={activeScreenTile.label}
@@ -159,10 +172,10 @@ export function VideoGrid({
               fullscreenLabel={`Открыть ${activeScreenTile.label} на весь экран`}
               onOpenFullscreen={() => openFullscreen({ ...activeScreenTile, presentation: true })}
             />
-          </div>
+          </Box>
 
           {cameraTiles.length > 0 && (
-            <div className="video-stage__participants" aria-label="Participants">
+            <Box className="video-stage__participants" aria-label="Участники">
               {cameraTiles.map((tile) => (
                 <VideoTile
                   key={tile.key}
@@ -176,29 +189,90 @@ export function VideoGrid({
                   onOpenFullscreen={() => openFullscreen(tile)}
                 />
               ))}
-            </div>
+            </Box>
           )}
-        </div>
+        </Box>
       ) : (
-        <div className={getGridClass(tileCount)}>
-          {cameraTiles.map((tile) => (
-            <VideoTile
-              key={tile.key}
-              label={tile.label}
-              isCreator={tile.isCreator}
-              stream={tile.stream}
-              track={tile.track}
-              muted={tile.muted}
-              cameraOff={tile.cameraOff}
-              fullscreenLabel={`Открыть ${tile.label} на весь экран`}
-              onOpenFullscreen={() => openFullscreen(tile)}
-            />
-          ))}
-        </div>
+        <Box className="video-grid-shell">
+          {spotlightTile ? (
+            <Box className="video-stage video-stage--spotlight video-stage--with-participants">
+              <Box className="video-stage__main">
+                <VideoTile
+                  key={spotlightTile.key}
+                  label={spotlightTile.label}
+                  isCreator={spotlightTile.isCreator}
+                  stream={spotlightTile.stream}
+                  track={spotlightTile.track}
+                  muted={spotlightTile.muted}
+                  cameraOff={spotlightTile.cameraOff}
+                  selected
+                  fullscreenLabel={`Открыть ${spotlightTile.label} на весь экран`}
+                  onSelect={() => setSpotlightTileKey(null)}
+                  onOpenFullscreen={() => openFullscreen(spotlightTile)}
+                />
+              </Box>
+
+              <Box className="video-stage__participants" aria-label="Участники">
+                {sideTiles.map((tile) => (
+                  <VideoTile
+                    key={tile.key}
+                    label={tile.label}
+                    isCreator={tile.isCreator}
+                    stream={tile.stream}
+                    track={tile.track}
+                    muted={tile.muted}
+                    cameraOff={tile.cameraOff}
+                    fullscreenLabel={`Открыть ${tile.label} на весь экран`}
+                    onSelect={() => setSpotlightTileKey(tile.key)}
+                    onOpenFullscreen={() => openFullscreen(tile)}
+                  />
+                ))}
+              </Box>
+            </Box>
+          ) : (
+            <Box className={getGridClass(tileCount)}>
+              {cameraTiles.map((tile) => (
+                <VideoTile
+                  key={tile.key}
+                  label={tile.label}
+                  isCreator={tile.isCreator}
+                  stream={tile.stream}
+                  track={tile.track}
+                  muted={tile.muted}
+                  cameraOff={tile.cameraOff}
+                  fullscreenLabel={`Открыть ${tile.label} на весь экран`}
+                  onSelect={tileCount > 1 ? () => setSpotlightTileKey(tile.key) : undefined}
+                  onOpenFullscreen={() => openFullscreen(tile)}
+                />
+              ))}
+            </Box>
+          )}
+
+          {hasOnlySelf && (
+            <Box className="room-invite" role="status">
+              <Box>
+                <Text component="p" className="room-invite__title">Вы в комнате</Text>
+                <Text component="p" className="room-invite__text">Отправьте ссылку участникам, чтобы начать встречу.</Text>
+              </Box>
+
+              {onShareLink && (
+                <Button
+                  className="room-invite__btn"
+                  variant="subtle"
+                  onClick={() => {
+                    void onShareLink();
+                  }}
+                >
+                  Поделиться ссылкой
+                </Button>
+              )}
+            </Box>
+          )}
+        </Box>
       )}
 
       {fullscreenTile && (
-        <div
+        <Box
           className="media-fullscreen"
           role="dialog"
           aria-modal="true"
@@ -209,9 +283,18 @@ export function VideoGrid({
             setFullscreenZoom((zoom) => clampZoom(zoom + (event.deltaY < 0 ? 0.18 : -0.18)));
           }}
         >
-          <div className="media-fullscreen__zoom-value">{Math.round(fullscreenZoom * 100)}%</div>
+          <Box className="media-fullscreen__zoom-value">{Math.round(fullscreenZoom * 100)}%</Box>
+          <Text component="div" className="media-fullscreen__hint">Колесико - масштаб</Text>
+          <Button
+            className="media-fullscreen__reset"
+            variant="subtle"
+            leftSection={<RotateCcw size={13} />}
+            onClick={() => setFullscreenZoom(1)}
+          >
+            100%
+          </Button>
 
-          <div className="media-fullscreen__stage">
+          <Box className="media-fullscreen__stage">
             <VideoTile
               label={fullscreenTile.label}
               isCreator={fullscreenTile.isCreator}
@@ -221,29 +304,18 @@ export function VideoGrid({
               cameraOff={fullscreenTile.cameraOff}
               presentation={fullscreenTile.presentation}
             />
-          </div>
+          </Box>
 
-          <button
+          <ActionIcon
             className="media-fullscreen__close"
-            type="button"
+            variant="subtle"
             aria-label="Закрыть полноэкранный режим"
             title="Закрыть"
             onClick={closeFullscreen}
           >
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              width={18}
-              height={18}
-            >
-              <path d="M4 4l12 12" />
-              <path d="M16 4L4 16" />
-            </svg>
-          </button>
-        </div>
+            <X size={18} strokeWidth={2} />
+          </ActionIcon>
+        </Box>
       )}
     </>
   );

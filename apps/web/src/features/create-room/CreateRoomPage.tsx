@@ -1,4 +1,6 @@
+import { Box, Button } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCreateRoomMutation } from "../../shared/api/roomQueries";
 import { creatorTokenKey } from "../../shared/storage/sessionStorageKeys";
@@ -14,9 +16,9 @@ export function CreateRoomPage() {
         notifications.show({
           title: "Комната создана",
           message: "Проверьте камеру и микрофон перед входом.",
-          color: "teal",
+          color: "violet",
         });
-        navigate(`/комната/${room.slug}`);
+        navigate(`/r/${room.slug}`);
       },
       onError: (error) => {
         notifications.show({
@@ -29,37 +31,33 @@ export function CreateRoomPage() {
   };
 
   return (
-    <div className="page-shell">
-      <div className="home-hero">
-        <button
-          className="home-cta"
-          disabled={createRoomMutation.isPending}
-          onClick={handleCreateRoom}
-        >
-          {createRoomMutation.isPending ? (
-            <>
-              <span className="spinner" />
-              Создаем комнату...
-            </>
-          ) : (
-            <>
-              Создать встречу
-              <svg
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                width={18}
-                height={18}
-              >
-                <path d="M4 10h12M11 5l5 5-5 5" />
-              </svg>
-            </>
-          )}
-        </button>
-      </div>
-    </div>
+    <Box className="page-shell">
+      <Box className="home-hero">
+        <Box className="home-action-stage">
+          <Box className="home-comet-scene" aria-hidden="true">
+            <span className="home-star home-star--a" />
+            <span className="home-star home-star--b" />
+            <span className="home-star home-star--c" />
+            <span className="home-star home-star--d" />
+            <span className="home-orbit home-orbit--outer" />
+            <span className="home-orbit home-orbit--inner" />
+            <span className="home-comet">
+              <span className="home-comet__tail" />
+              <span className="home-comet__core" />
+            </span>
+          </Box>
+
+          <Button
+            className="home-cta"
+            loading={createRoomMutation.isPending}
+            loaderProps={{ type: "oval" }}
+            rightSection={!createRoomMutation.isPending ? <ArrowRight size={18} /> : undefined}
+            onClick={handleCreateRoom}
+          >
+            {createRoomMutation.isPending ? "Создаем комнату..." : "Создать встречу"}
+          </Button>
+        </Box>
+      </Box>
+    </Box>
   );
 }

@@ -18,7 +18,6 @@ export function App() {
         <main>
           <Routes>
             <Route path="/" element={<CreateRoomPage />} />
-            <Route path="/комната/:slug" element={<RoomPage />} />
             <Route path="/r/:slug" element={<RoomPage />} />
           </Routes>
         </main>

@@ -1,3 +1,5 @@
+import { Anchor, Button } from "@mantine/core";
+import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export function AppHeader() {
@@ -5,7 +7,7 @@ export function AppHeader() {
 
   return (
     <header className="app-header">
-      <a
+      <Anchor
         className="app-logo"
         href="/"
         onClick={(e) => {
@@ -13,13 +15,23 @@ export function AppHeader() {
           navigate("/");
         }}
       >
-        <span className="app-logo-dot" />
+        <span className="app-logo-comet" aria-hidden="true">
+          <span className="app-logo-comet__tail" />
+          <span className="app-logo-comet__wake" />
+          <span className="app-logo-comet__core" />
+          <span className="app-logo-comet__spark" />
+        </span>
         Comet
-      </a>
+      </Anchor>
 
-      <button className="header-new-btn" onClick={() => navigate("/")}>
+      <Button
+        className="header-new-btn"
+        variant="subtle"
+        leftSection={<Plus size={16} />}
+        onClick={() => navigate("/")}
+      >
         Новая комната
-      </button>
+      </Button>
     </header>
   );
 }
