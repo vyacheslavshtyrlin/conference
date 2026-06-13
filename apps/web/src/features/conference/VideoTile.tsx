@@ -8,6 +8,8 @@ type VideoTileProps = {
   muted?: boolean;
   cameraOff?: boolean;
   presentation?: boolean;
+  fullscreenLabel?: string;
+  onOpenFullscreen?: () => void;
 };
 
 export function VideoTile({
@@ -18,6 +20,8 @@ export function VideoTile({
   muted = false,
   cameraOff = false,
   presentation = false,
+  fullscreenLabel = "Open fullscreen",
+  onOpenFullscreen,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const internalStreamRef = useRef<MediaStream | null>(null);
@@ -70,6 +74,32 @@ export function VideoTile({
         <span className="video-tile__name">{label}</span>
         {isCreator && <span className="video-tile__creator">Host</span>}
       </div>
+
+      {hasVideo && onOpenFullscreen && (
+        <button
+          className="video-tile__fullscreen"
+          type="button"
+          aria-label={fullscreenLabel}
+          title={fullscreenLabel}
+          onClick={onOpenFullscreen}
+        >
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            width={16}
+            height={16}
+          >
+            <path d="M7 3H3v4" />
+            <path d="M13 3h4v4" />
+            <path d="M17 13v4h-4" />
+            <path d="M3 13v4h4" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }

@@ -68,6 +68,18 @@ function IconUsers() {
   );
 }
 
+function IconShare() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" width={18} height={18}>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8.6 10.5 15.4 6.5" />
+      <path d="M8.6 13.5 15.4 17.5" />
+    </svg>
+  );
+}
+
 function IconLeave() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" width={18} height={18}>
@@ -158,6 +170,44 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
   } = conference;
 
   const connDotClass = `conn-dot conn-dot--${connectionState}`;
+  const handleShareLink = async () => {
+    const shareUrl = `${window.location.origin}/комната/${slug}`;
+    const shareData = {
+      title: "Comet",
+      text: "Ссылка на трансляцию",
+      url: shareUrl,
+    };
+
+    const copyShareUrl = async () => {
+      await navigator.clipboard.writeText(shareUrl);
+      notifications.show({
+        color: "teal",
+        title: "Ссылка скопирована",
+        message: "Отправьте ее участникам встречи.",
+      });
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+
+      await copyShareUrl();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+
+      try {
+        await copyShareUrl();
+      } catch {
+        notifications.show({
+          color: "red",
+          title: "Не удалось поделиться ссылкой",
+          message: "Скопируйте адрес комнаты из строки браузера.",
+        });
+      }
+    }
+  };
 
   return (
     <div className="conf-shell">
@@ -190,6 +240,16 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
               Reconnect
             </button>
           )}
+          <button
+            className="conf-share-btn"
+            type="button"
+            aria-label="Поделиться ссылкой на трансляцию"
+            title="Поделиться ссылкой"
+            onClick={() => { void handleShareLink(); }}
+          >
+            <IconShare />
+            <span className="conf-share-label">Поделиться</span>
+          </button>
           <div className="conf-conn">
             <span className={connDotClass} />
             {connectionState}
@@ -214,7 +274,7 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
       {/* ── Control bar ── */}
       <div className="conf-control-bar">
         {/* Center: media controls */}
-        <div className="ctrl-group" style={{ flex: 1 }} />
+        <div className="ctrl-spacer" />
 
         <div className="ctrl-group">
           <button
@@ -248,16 +308,16 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
         </div>
 
         {/* Right: secondary actions */}
-        <div className="ctrl-group" style={{ flex: 1, justifyContent: "flex-end" }}>
+        <div className="ctrl-group ctrl-group--secondary">
           <button className="ctrl-label-btn" onClick={participantsDrawer.open}>
             <IconUsers />
-            Participants
+            <span className="ctrl-label-text">Participants</span>
             <span className="badge-count">{participants.length}</span>
           </button>
 
           <button className="ctrl-leave-btn" onClick={leave}>
             <IconLeave />
-            Leave
+            <span className="ctrl-label-text">Leave</span>
           </button>
         </div>
       </div>

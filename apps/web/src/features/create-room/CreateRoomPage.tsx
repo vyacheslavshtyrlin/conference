@@ -12,17 +12,17 @@ export function CreateRoomPage() {
       onSuccess: (room) => {
         sessionStorage.setItem(creatorTokenKey(room.slug), room.creatorToken);
         notifications.show({
-          title: "Room created",
-          message: "Check your camera and mic before joining.",
+          title: "Комната создана",
+          message: "Проверьте камеру и микрофон перед входом.",
           color: "teal",
         });
-        navigate(`/r/${room.slug}`);
+        navigate(`/комната/${room.slug}`);
       },
       onError: (error) => {
         notifications.show({
           color: "red",
-          title: "Could not create room",
-          message: error instanceof Error ? error.message : "Try again later.",
+          title: "Не удалось создать комнату",
+          message: error instanceof Error ? error.message : "Попробуйте еще раз.",
         });
       },
     });
@@ -31,21 +31,6 @@ export function CreateRoomPage() {
   return (
     <div className="page-shell">
       <div className="home-hero">
-        <div className="home-eyebrow">
-          <span className="home-eyebrow-dot" />
-          End-to-end encrypted
-        </div>
-
-        <h1>
-          Meet, without<br />
-          <em>the friction.</em>
-        </h1>
-
-        <p>
-          Instant video rooms. No downloads, no accounts.<br />
-          Share a link and you're in.
-        </p>
-
         <button
           className="home-cta"
           disabled={createRoomMutation.isPending}
@@ -54,11 +39,11 @@ export function CreateRoomPage() {
           {createRoomMutation.isPending ? (
             <>
               <span className="spinner" />
-              Creating room…
+              Создаем комнату...
             </>
           ) : (
             <>
-              Start a meeting
+              Создать встречу
               <svg
                 viewBox="0 0 20 20"
                 fill="none"
@@ -74,17 +59,6 @@ export function CreateRoomPage() {
             </>
           )}
         </button>
-
-        <div className="home-features">
-          {["No install required", "HD video & audio", "Screen sharing", "Up to 30 min free"].map(
-            (f) => (
-              <span key={f} className="home-feature">
-                <span className="home-feature-dot" />
-                {f}
-              </span>
-            ),
-          )}
-        </div>
       </div>
     </div>
   );

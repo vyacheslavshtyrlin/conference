@@ -17,10 +17,8 @@ export function AppHeader() {
         Comet
       </a>
 
-      <span className="app-header-hint">Rooms expire after 30 min</span>
-
       <button className="header-new-btn" onClick={() => navigate("/")}>
-        New room
+        Новая комната
       </button>
     </header>
   );
