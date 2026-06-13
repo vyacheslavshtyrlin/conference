@@ -32,7 +32,7 @@ class FakeRepository {
 
   async assertRoomCapacity(): Promise<void> {}
 
-  async saveParticipant(_roomId: string, participant: Participant): Promise<void> {
+  async saveParticipant(_roomId: string, _expiresAt: string, participant: Participant): Promise<void> {
     this.participants.set(participant.participantId, participant);
   }
 
@@ -45,9 +45,18 @@ class FakeRepository {
 
 class FakeMediasoupService {
   ensureRoomCalls = 0;
+  private roomDeadCallback?: (roomId: string) => void;
+
+  setRoomDeadCallback(callback: (roomId: string) => void): void {
+    this.roomDeadCallback = callback;
+  }
 
   async ensureRoom(): Promise<void> {
     this.ensureRoomCalls += 1;
+  }
+
+  simulateWorkerDeath(roomId: string): void {
+    this.roomDeadCallback?.(roomId);
   }
 }
 

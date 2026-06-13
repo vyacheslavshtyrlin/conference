@@ -1,59 +1,66 @@
 # MVP Server Deployment
 
-This document describes the expected MVP deployment path: one dedicated server, Docker Compose, coturn, and a host reverse proxy for HTTPS/WSS. Vercel is not used for MVP deployment.
+> Current immediate target: quick single-server deployment from this repository on DuckDNS.
+>
+> Use [DuckDNS Single-Server MVP Deployment](deployment-duckdns.md) for the current MVP.
+>
+> The future split-repository/three-server target is documented in [Three-Server Production Baseline](deployment-three-server.md).
 
-## Deployment Shape
+One dedicated server. Docker Compose for all app services. nginx and certbot installed on the host OS. No Vercel.
 
-Run these services on one server:
+## Traffic routing
 
-- `web`: frontend container.
-- `api`: NestJS API container.
-- `signaling`: WebSocket/mediasoup container.
-- `redis`: room/session state.
-- `turn`: coturn.
-- reverse proxy on the host: Nginx or Caddy.
-
-Recommended public entrypoints:
-
-- `https://conference.example.com` -> web.
-- `https://conference.example.com/api/v1` -> API.
-- `wss://conference.example.com/ws` -> signaling.
-- `turn:conference.example.com:3478` -> coturn, direct public TCP/UDP port.
-- `40000-40100/udp` -> mediasoup RTP port range, direct public UDP ports.
-
-Do not expose production secrets in git. Put server values in the server `.env` file and GitHub Actions secrets.
-
-## DNS
-
-Create DNS records before issuing certificates:
-
-```text
-conference.example.com A <server-public-ip>
+```
+Internet
+  ├── :80 / :443  → nginx (host) → proxy_pass
+  │                    ├── /         → 127.0.0.1:8080  (web:  nginx static build)
+  │                    ├── /api/v1/  → 127.0.0.1:3000  (api:  NestJS)
+  │                    └── /ws       → 127.0.0.1:4000  (signaling: WebSocket)
+  ├── :3478 tcp/udp → coturn (Docker, direct)
+  └── :40000-40100/udp → mediasoup RTP (Docker, direct)
 ```
 
-Using one domain with `/api/v1` and `/ws` paths is enough for the MVP. Separate domains can be added later if needed.
+## 1. Server prerequisites
 
-## Server Prerequisites
+Ubuntu 22.04 LTS or 24.04 LTS.
 
-Install Docker, Docker Compose plugin, Git, and a reverse proxy.
+### 1.1 Create a deploy user
 
-Example for Ubuntu:
+If the server only has `root` (bare metal / VPS without cloud-init), create a non-root user first.  
+On cloud images (AWS, DigitalOcean, Hetzner) the `ubuntu` user already exists — skip to 1.2.
+
+```bash
+# Run as root
+adduser deploy                   # set a password when prompted
+usermod -aG sudo deploy
+su - deploy                      # switch to the new user for all further steps
+```
+
+### 1.2 Configure git
+
+```bash
+git config --global user.name  "Deploy Bot"
+git config --global user.email "deploy@example.com"
+```
+
+### 1.3 Install packages
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl git nginx certbot python3-certbot-nginx
-```
+sudo apt-get install -y \
+  ca-certificates curl git \
+  nginx certbot python3-certbot-nginx
 
-Install Docker using the official Docker package source for the target OS. After install, verify:
+# Docker (official package)
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+newgrp docker          # or log out and back in
 
-```bash
 docker --version
 docker compose version
 ```
 
-## Firewall
-
-Open only the public ports needed by the MVP:
+## 2. Firewall
 
 ```bash
 sudo ufw allow 22/tcp
@@ -66,62 +73,52 @@ sudo ufw enable
 sudo ufw status
 ```
 
-If the server is in a cloud provider, open the same ports in the provider firewall/security group.
+> **Note on Docker and UFW**: Docker manages its own iptables rules and can bypass UFW for ports bound on `0.0.0.0`. The app ports (3000, 4000, 5173) in the base `docker-compose.yml` are bound to `0.0.0.0`. To prevent external access to those ports either:
+> - Add cloud provider security group rules (recommended — enforced at network level before the VM).
+> - Or edit `/etc/docker/daemon.json`: `{"iptables": false}` and manage rules manually.
+>
+> The production compose overrides redis to `127.0.0.1:6379`. For web port 8080 the prod compose uses `127.0.0.1:8080:80`. Ports 3000 and 4000 rely on the cloud security group or cloud firewall to block external access.
 
-Keep app ports `5173`, `3000`, and `4000` closed to the public internet when the reverse proxy is configured. Public traffic should enter through HTTPS/WSS and TURN/UDP ports only.
+## 3. DNS
 
-For production, bind app ports to localhost or apply equivalent host/cloud firewall rules. A simple production override can be added on the server as `docker-compose.prod.yml`:
-
-```yaml
-services:
-  web:
-    ports:
-      - "127.0.0.1:5173:5173"
-
-  api:
-    ports:
-      - "127.0.0.1:3000:3000"
-
-  signaling:
-    ports:
-      - "127.0.0.1:4000:4000"
-      - "40000-40100:40000-40100/udp"
-
-  redis:
-    ports:
-      - "127.0.0.1:6379:6379"
+```
+conference.example.com  A  <server-public-ip>
 ```
 
-Then use both compose files:
+Create the DNS record and wait for propagation before issuing the certificate.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-```
-
-On Linux, Docker port publishing can interact with firewall rules in ways that surprise `ufw`, so localhost binding is the preferred production baseline for web/API/signaling app ports.
-
-## Initial Server Checkout
-
-Create a deployment directory and clone the repository:
+## 4. Clone the repository
 
 ```bash
 sudo mkdir -p /opt/conference
 sudo chown "$USER":"$USER" /opt/conference
 git clone git@github.com:<owner>/<repo>.git /opt/conference
 cd /opt/conference
-cp .env.example .env
 ```
 
-Edit `.env` for the server:
+## 5. Create the server .env
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Minimum required values:
 
 ```env
 NODE_ENV=production
 
-WEB_PUBLIC_URL=https://conference.example.com
-API_PUBLIC_URL=https://conference.example.com
-MEDIA_NODE_ID=local
-SIGNALING_PUBLIC_URL=wss://conference.example.com/ws
+DOMAIN=conference.example.com
+CERTBOT_EMAIL=admin@example.com
 
+# Public URLs baked into the web bundle and used by the API for CORS / signaling join URL
+WEB_PUBLIC_URL=https://conference.example.com
+VITE_API_BASE_URL=https://conference.example.com/api/v1
+VITE_SIGNALING_URL=wss://conference.example.com/ws
+SIGNALING_PUBLIC_URL=wss://conference.example.com/ws
+WS_ALLOWED_ORIGINS=https://conference.example.com
+
+MEDIA_NODE_ID=local
 REDIS_URL=redis://redis:6379
 
 MEDIASOUP_LISTEN_IP=0.0.0.0
@@ -134,154 +131,132 @@ TURN_USERNAME=<turn-username>
 TURN_PASSWORD=<strong-turn-password>
 TURN_REALM=conference.example.com
 
+# Generate with: openssl rand -hex 32
 JOIN_TOKEN_SECRET=<strong-random-secret>
-WS_HEARTBEAT_INTERVAL_MS=30000
-WS_MAX_PAYLOAD_BYTES=65536
-WS_SEND_BACKPRESSURE_BYTES=262144
-WS_RATE_LIMIT_WINDOW_MS=10000
-WS_RATE_LIMIT_MAX_MESSAGES=60
-WS_ALLOWED_ORIGINS=https://conference.example.com
-MEDIASOUP_MAX_TRANSPORTS_PER_PEER=4
-MEDIASOUP_MAX_PRODUCERS_PER_PEER=3
-MEDIASOUP_MAX_CONSUMERS_PER_PEER=32
 ```
 
-Phase 0 compose is a skeleton and currently uses development targets. Before production traffic, either switch compose app build targets to production or add a production compose override. Redis, coturn, port ranges, and reverse-proxy assumptions remain the same.
-
-## Start Docker Compose
-
-From the deployment directory:
+## 6. Configure nginx
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+export DOMAIN=conference.example.com
+
+envsubst '$DOMAIN' < /opt/conference/nginx/conference.conf \
+  | sudo tee /etc/nginx/sites-available/conference
+
+sudo ln -s /etc/nginx/sites-available/conference /etc/nginx/sites-enabled/
+
+# Disable the default site if present
+sudo rm -f /etc/nginx/sites-enabled/default
+
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## 7. Issue TLS certificate
+
+```bash
+sudo certbot --nginx -d conference.example.com
+```
+
+certbot edits the nginx site config to add the HTTPS server block and SSL certificate paths, then reloads nginx. After this, the site serves HTTPS and redirects HTTP.
+
+Renewal is automatic via the certbot systemd timer (`certbot.timer`).
+
+## 8. First Docker Compose start
+
+```bash
+cd /opt/conference
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose ps
 ```
 
-Health checks for the Phase 0 placeholders:
+Allow 30–60 seconds for health checks to pass. Verify:
 
 ```bash
-curl http://127.0.0.1:3000/api/v1/health
-curl http://127.0.0.1:4000/health
+curl https://conference.example.com/api/v1/health
+curl https://conference.example.com
 ```
 
-TURN starts from the existing `turn` service in `docker-compose.yml`. Production credentials should be changed from development values before public use.
+## 9. GitHub Actions CD
 
-## Nginx HTTPS/WSS
-
-Create an Nginx site:
-
-```nginx
-server {
-  listen 80;
-  server_name conference.example.com;
-
-  location / {
-    proxy_pass http://127.0.0.1:5173;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-
-  location /api/v1/ {
-    proxy_pass http://127.0.0.1:3000/api/v1/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-
-  location /ws {
-    proxy_pass http://127.0.0.1:4000/ws;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-  }
-}
-```
-
-Enable the site and issue a certificate:
+### 9.1 Generate the deploy SSH key (local machine)
 
 ```bash
-sudo nginx -t
-sudo systemctl reload nginx
-sudo certbot --nginx -d conference.example.com
-sudo nginx -t
-sudo systemctl reload nginx
+ssh-keygen -t ed25519 -f ~/.ssh/conference_deploy -N ""
+
+# Copy public key to the server
+ssh-copy-id -i ~/.ssh/conference_deploy.pub deploy@<server-ip>
+
+# Print the private key — you will paste it into GitHub
+cat ~/.ssh/conference_deploy
 ```
 
-After this, the browser should use:
+### 9.2 Create the repository environment
 
-```text
-https://conference.example.com
-wss://conference.example.com/ws
-```
+1. Open the repository on GitHub.
+2. **Settings → Environments → New environment**.
+3. Name: `mvp-production`.
+4. Enable **Required reviewers** and add yourself (gates every deploy behind manual approval).
+5. Click **Save protection rules**.
 
-TURN remains direct on `3478/tcp` and `3478/udp`; it is not proxied by this Nginx HTTP config.
+### 9.3 Add repository secrets
 
-## GitHub Actions CD
+**Settings → Secrets and variables → Actions → New repository secret** — create all four:
 
-The repository has a manual deploy job in `.github/workflows/ci.yml`. Configure GitHub before relying on it:
+| Secret | Value |
+|--------|-------|
+| `MVP_DEPLOY_HOST` | Server public IP or hostname |
+| `MVP_DEPLOY_USER` | SSH user (`deploy` or `ubuntu`) |
+| `MVP_DEPLOY_PATH` | `/opt/conference` |
+| `MVP_DEPLOY_SSH_KEY` | Full contents of `~/.ssh/conference_deploy` (private key) |
 
-1. Create an environment named `mvp-production`.
-2. Add required reviewers to that environment.
-3. Add Actions secrets:
-   - `MVP_DEPLOY_HOST`: server IP or DNS name.
-   - `MVP_DEPLOY_USER`: SSH user.
-   - `MVP_DEPLOY_PATH`: `/opt/conference` or the chosen checkout path.
-   - `MVP_DEPLOY_SSH_KEY`: private SSH key with access to the server.
-4. Add the public key to the server user's `~/.ssh/authorized_keys`.
-5. Ensure the server checkout can pull from GitHub.
+### 9.4 Enable GitHub Actions
 
-The deploy job runs only through `workflow_dispatch` on `main`. It SSHes into the server and runs:
+**Settings → Actions → General → Allow all actions** (or restrict to your org).  
+Ensure **Workflow permissions** → **Read and write permissions** is selected so the workflow can read secrets from the environment.
+
+### 9.5 Protect the main branch (optional but recommended)
+
+**Settings → Branches → Add branch protection rule**:
+- Branch name pattern: `main`
+- ✅ Require a pull request before merging
+- ✅ Require status checks to pass: select the service/deploy verification job
+- ✅ Do not allow bypassing the above settings
+
+### 9.6 Trigger a deploy
+
+**Actions → CI → Run workflow → branch: `main` → Run workflow.**
+
+The `deploy` job only runs when triggered manually (`workflow_dispatch`) on `main` and after `verify` passes. It SSHes to the server and runs:
 
 ```bash
-cd "$MVP_DEPLOY_PATH"
+cd /opt/conference
 git pull --ff-only
-if [ -f docker-compose.prod.yml ]; then
-  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-else
-  docker compose up -d --build
-fi
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-CI still runs automatically on pull requests and pushes to `main`.
+If `mvp-production` has required reviewers, GitHub will pause the deploy job and send an email asking for approval before the SSH step executes.
 
-## Post-Deploy Checks
-
-Run these after a deploy:
+## Post-deploy checks
 
 ```bash
 docker compose ps
 docker compose logs --tail=100 api
 docker compose logs --tail=100 signaling
-docker compose logs --tail=100 turn
+
 curl https://conference.example.com/api/v1/health
 curl https://conference.example.com
 ```
 
-For media connectivity, verify:
+Media connectivity:
 
 - `MEDIASOUP_ANNOUNCED_IP` is the public server IP.
-- `40000-40100/udp` is open on host and cloud firewall.
-- `3478/tcp` and `3478/udp` are open for TURN.
+- `40000-40100/udp` open in both UFW and cloud security group.
+- `3478/tcp` and `3478/udp` open for TURN.
 - `SIGNALING_PUBLIC_URL` uses `wss://`.
-- `MEDIA_NODE_ID` identifies the media node assigned to newly created rooms. In a single-node MVP deployment, keep it as `local`.
-- Signaling keeps dead WebSocket connections bounded through heartbeat checks and closes clients whose send buffer exceeds `WS_SEND_BACKPRESSURE_BYTES`.
-- Signaling enforces per-socket WebSocket message rate limits using `WS_RATE_LIMIT_MAX_MESSAGES` per `WS_RATE_LIMIT_WINDOW_MS`.
-- Signaling rejects browser WebSocket connections whose `Origin` is not listed in `WS_ALLOWED_ORIGINS`.
-- Use `/health` for liveness and `/ready` for readiness. `/ready` should be used by production routing/orchestration because it checks Redis and mediasoup initialization.
-- mediasoup resource limits should stay finite in production. The default producer limit allows one mic, one camera and one screen-share producer per participant.
-- Browser access uses HTTPS, not plain HTTP.
+- Browser opens the app over HTTPS (required for camera/mic permissions).
 
 ## Rollback
-
-The simple MVP rollback is a git checkout plus compose rebuild:
 
 ```bash
 cd /opt/conference
@@ -290,10 +265,9 @@ git checkout <previous-commit-sha>
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-Return to `main` after investigation:
+Return to main:
 
 ```bash
-git checkout main
-git pull --ff-only
+git checkout main && git pull --ff-only
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```

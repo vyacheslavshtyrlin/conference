@@ -5,8 +5,8 @@ import { ConfigService } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Participant, RoomMetadata } from "@conference/contracts";
-import { roomFull, roomNotFound } from "./room-errors.js";
+import type { RoomMetadata } from "@conference/contracts";
+import { roomNotFound } from "./room-errors.js";
 import type { CreateRoomRecord } from "./room.repository.js";
 import { RoomRepository } from "./room.repository.js";
 import { RoomTokenService } from "./room-token.service.js";
@@ -16,7 +16,6 @@ import { RoomsService } from "./rooms.service.js";
 class InMemoryRoomRepository extends RoomRepository {
   readonly rooms = new Map<string, RoomMetadata>();
   readonly slugs = new Map<string, string>();
-  readonly participants = new Map<string, Participant[]>();
 
   async createRoom(record: CreateRoomRecord): Promise<RoomMetadata> {
     const room: RoomMetadata = { ...record, status: "active" };
@@ -36,14 +35,8 @@ class InMemoryRoomRepository extends RoomRepository {
     return room;
   }
 
-  async saveParticipant(room: RoomMetadata, participant: Participant): Promise<void> {
-    const participants = this.participants.get(room.roomId) ?? [];
-    if (participants.length >= 10) {
-      throw roomFull();
-    }
-
-    participants.push(participant);
-    this.participants.set(room.roomId, participants);
+  async getParticipantCount(_roomId: string): Promise<number> {
+    return 0;
   }
 }
 

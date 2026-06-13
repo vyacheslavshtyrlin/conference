@@ -1,5 +1,6 @@
 import { MAX_ROOM_PARTICIPANTS } from "@conference/contracts";
 import type { MediaKind, Participant, ParticipantMedia, RoomMetadata } from "@conference/contracts";
+import type { Logger } from "@conference/logger";
 import { Mutex } from "async-mutex";
 
 import { SignalingError } from "./errors.js";
@@ -17,12 +18,22 @@ type RuntimeRoomState = {
 export class RoomManager {
   private readonly rooms = new Map<string, RuntimeRoomState>();
   private readonly roomLocks = new Map<string, Mutex>();
+  private onParticipantEvictedCallback?: (roomId: string, participantId: string) => void;
 
   constructor(
     private readonly repository: RedisRoomRepository,
     private readonly mediasoup: MediasoupService,
     private readonly emptyGraceMs: number,
-  ) {}
+    private readonly logger?: Logger,
+  ) {
+    mediasoup.setRoomDeadCallback((roomId) => {
+      this.handleRoomDead(roomId);
+    });
+  }
+
+  setParticipantEvictedCallback(callback: (roomId: string, participantId: string) => void): void {
+    this.onParticipantEvictedCallback = callback;
+  }
 
   async join(payload: JoinTokenPayload): Promise<{ room: RoomMetadata; participant: Participant; participants: Participant[] }> {
     return this.runExclusive(payload.roomId, async () => {
@@ -34,8 +45,16 @@ export class RoomManager {
       }
 
       await this.repository.assertRoomCapacity(metadata.roomId, payload.participantId);
+
+      // Guard: reject the join if the room expired between getRoom and here.
+      // saveParticipant would otherwise clamp a negative TTL to 1ms and silently
+      // write a participant record that vanishes immediately.
+      if (new Date(metadata.expiresAt).getTime() <= Date.now()) {
+        throw new SignalingError("ROOM_EXPIRED", "Room has expired");
+      }
+
       const participant = state.peers.addPeer(payload);
-      await this.repository.saveParticipant(metadata.roomId, participant);
+      await this.repository.saveParticipant(metadata.roomId, metadata.expiresAt, participant);
 
       if (state.cleanupTimer) {
         clearTimeout(state.cleanupTimer);
@@ -58,12 +77,18 @@ export class RoomManager {
   async setMedia(roomId: string, participantId: string, media: ParticipantMedia): Promise<Participant> {
     return this.runExclusive(roomId, async () => {
       const state = this.requireRuntimeRoom(roomId);
+
+      // Fix 3: guard against writing to an already-expired room (Math.max clamp would silently set 1ms TTL)
+      if (new Date(state.metadata.expiresAt).getTime() <= Date.now()) {
+        throw new SignalingError("ROOM_EXPIRED", "Room has expired");
+      }
+
       const participant = state.peers.setMedia(participantId, media);
       if (!participant) {
         throw new SignalingError("INVALID_TOKEN", "Participant is not joined");
       }
 
-      await this.repository.saveParticipant(roomId, participant);
+      await this.repository.saveParticipant(roomId, state.metadata.expiresAt, participant);
       return participant;
     });
   }
@@ -144,6 +169,33 @@ export class RoomManager {
     });
   }
 
+  // Called when a mediasoup worker dies — evicts all participants in the affected room.
+  private handleRoomDead(roomId: string): void {
+    this.runExclusive(roomId, async () => {
+      const state = this.rooms.get(roomId);
+      if (!state) {
+        return;
+      }
+
+      if (state.cleanupTimer) {
+        clearTimeout(state.cleanupTimer);
+      }
+
+      // Notify gateway per-participant before wiping Redis state.
+      // removeParticipant per-peer is skipped: closeRoom below deletes
+      // the entire participants hash in one DEL, making per-entry hDel redundant.
+      for (const participant of state.peers.list()) {
+        this.onParticipantEvictedCallback?.(roomId, participant.participantId);
+      }
+
+      this.rooms.delete(roomId);
+      await this.repository.closeRoom(state.metadata);
+      this.roomLocks.delete(roomId);
+    }).catch((error: unknown) => {
+      this.logger?.error("handleRoomDead cleanup failed", { roomId, error: String(error) });
+    });
+  }
+
   private async ensureRuntimeRoom(metadata: RoomMetadata): Promise<RuntimeRoomState> {
     const existing = this.rooms.get(metadata.roomId);
     if (existing) {
@@ -182,7 +234,9 @@ export class RoomManager {
 
       this.mediasoup.closeRoom(roomId);
       this.rooms.delete(roomId);
+      // Fix 2: delete lock after the await so no concurrent join sneaks in via a fresh mutex
       await this.repository.closeRoom(state.metadata);
+      this.roomLocks.delete(roomId);
     });
   }
 

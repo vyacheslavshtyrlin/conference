@@ -1,4 +1,5 @@
 import { readEnv, readNumberEnv } from "@conference/config";
+import { cpus } from "node:os";
 
 export type SignalingConfig = {
   port: number;
@@ -14,6 +15,7 @@ export type SignalingConfig = {
     allowedOrigins: string[];
   };
   mediasoup: {
+    numWorkers: number;
     listenIp: string;
     announcedIp?: string;
     rtcMinPort: number;
@@ -41,10 +43,11 @@ export function readSignalingConfig(): SignalingConfig {
       allowedOrigins: readCsvEnv("WS_ALLOWED_ORIGINS", "http://localhost:5173"),
     },
     mediasoup: {
+      numWorkers: readPositiveNumberEnv("MEDIASOUP_NUM_WORKERS", cpus().length),
       listenIp: readEnv("MEDIASOUP_LISTEN_IP", "0.0.0.0"),
       announcedIp: announcedIp && announcedIp.length > 0 ? announcedIp : undefined,
       rtcMinPort: readNumberEnv("MEDIASOUP_RTC_MIN_PORT", 40000),
-      rtcMaxPort: readNumberEnv("MEDIASOUP_RTC_MAX_PORT", 40100),
+      rtcMaxPort: readNumberEnv("MEDIASOUP_RTC_MAX_PORT", 49999),
       maxTransportsPerPeer: readPositiveNumberEnv("MEDIASOUP_MAX_TRANSPORTS_PER_PEER", 4),
       maxProducersPerPeer: readPositiveNumberEnv("MEDIASOUP_MAX_PRODUCERS_PER_PEER", 3),
       maxConsumersPerPeer: readPositiveNumberEnv("MEDIASOUP_MAX_CONSUMERS_PER_PEER", 32),

@@ -35,6 +35,7 @@ type ClientContext = {
 
 export class SocketGateway {
   private readonly clients = new Map<WebSocket, ClientContext>();
+  private readonly roomSockets = new Map<string, Set<WebSocket>>();
   private heartbeatTimer?: NodeJS.Timeout;
 
   constructor(
@@ -46,6 +47,10 @@ export class SocketGateway {
   ) {}
 
   start(): void {
+    this.roomManager.setParticipantEvictedCallback((roomId, participantId) => {
+      this.handleParticipantEvicted(roomId, participantId);
+    });
+
     this.wsServer.on("connection", (socket, request) => {
       void this.handleConnection(socket, request);
     });
@@ -64,6 +69,7 @@ export class SocketGateway {
     for (const context of this.clients.values()) {
       context.socket.close(1001, "Server shutting down");
     }
+    this.roomSockets.clear();
   }
 
   private async handleConnection(socket: WebSocket, request: IncomingMessage): Promise<void> {
@@ -268,6 +274,7 @@ export class SocketGateway {
   private async joinRoom(context: ClientContext, payload: Parameters<typeof this.roomManager.join>[0]): Promise<void> {
     const { room, participant, participants } = await this.roomManager.join(payload);
     context.joined = true;
+    this.addRoomSocket(context.roomId, context.socket);
 
     this.send(context.socket, {
       type: "room:snapshot",
@@ -294,21 +301,71 @@ export class SocketGateway {
     }
 
     context.joined = false;
+    // Fix 4: remove from roomSockets before broadcasting so the leaving socket
+    // cannot receive subsequent events in the window before the close event fires.
+    this.removeRoomSocket(context.roomId, context.socket);
     const participant = await this.roomManager.leave(context.roomId, context.participantId);
-    this.broadcast(context.roomId, { type: "participant:left", participantId: context.participantId }, context.socket);
+    this.broadcast(context.roomId, { type: "participant:left", participantId: context.participantId });
     return participant;
+  }
+
+  // Called when a mediasoup worker dies and RoomManager has evicted a participant.
+  private handleParticipantEvicted(roomId: string, participantId: string): void {
+    // Remove the evicted socket from roomSockets BEFORE broadcasting so it does
+    // not receive its own participant:left event. Search only room-scoped sockets
+    // (O(room-size)) instead of scanning all connected clients.
+    const roomSocketSet = this.roomSockets.get(roomId);
+    if (roomSocketSet) {
+      for (const socket of roomSocketSet) {
+        const context = this.clients.get(socket);
+        if (context?.participantId === participantId) {
+          context.joined = false;
+          this.removeRoomSocket(roomId, socket);
+          this.clients.delete(socket);
+          socket.close(1011, "Media server error");
+          break;
+        }
+      }
+    }
+
+    this.broadcast(roomId, { type: "participant:left", participantId });
   }
 
   private async handleDisconnect(context: ClientContext): Promise<void> {
     this.clients.delete(context.socket);
+    this.removeRoomSocket(context.roomId, context.socket);
     await this.leave(context);
   }
 
   private broadcast(roomId: string, event: ServerWebSocketEvent, except?: WebSocket): void {
-    for (const client of this.clients.values()) {
-      if (client.roomId === roomId && client.socket !== except && client.socket.readyState === WebSocket.OPEN) {
-        this.send(client.socket, event);
+    const sockets = this.roomSockets.get(roomId);
+    if (!sockets) {
+      return;
+    }
+    for (const socket of sockets) {
+      if (socket !== except && socket.readyState === WebSocket.OPEN) {
+        this.send(socket, event);
       }
+    }
+  }
+
+  private addRoomSocket(roomId: string, socket: WebSocket): void {
+    let sockets = this.roomSockets.get(roomId);
+    if (!sockets) {
+      sockets = new Set();
+      this.roomSockets.set(roomId, sockets);
+    }
+    sockets.add(socket);
+  }
+
+  private removeRoomSocket(roomId: string, socket: WebSocket): void {
+    const sockets = this.roomSockets.get(roomId);
+    if (!sockets) {
+      return;
+    }
+    sockets.delete(socket);
+    if (sockets.size === 0) {
+      this.roomSockets.delete(roomId);
     }
   }
 

@@ -1,23 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Participant, RoomMetadata } from "@conference/contracts";
+import type { RoomMetadata } from "@conference/contracts";
 import { REDIS_CLIENT } from "../redis/redis.constants.js";
 import type { RedisClient } from "../redis/redis.types.js";
-import { roomExpired, roomFull, roomNotFound } from "./room-errors.js";
+import { roomExpired, roomNotFound } from "./room-errors.js";
 
 const ROOM_TTL_SECONDS = 30 * 60;
-const MAX_ROOM_PARTICIPANTS = 10;
-
-// Atomically checks participant count and adds the participant in one round-trip.
-// Returns 1 on success, 0 if the room is already at capacity.
-const SAVE_PARTICIPANT_SCRIPT = `
-local key = KEYS[1]
-local max = tonumber(ARGV[1])
-local count = redis.call('HLEN', key)
-if count >= max then return 0 end
-redis.call('HSET', key, ARGV[2], ARGV[3])
-redis.call('PEXPIRE', key, tonumber(ARGV[4]))
-return 1
-`;
 
 export type CreateRoomRecord = {
   roomId: string;
@@ -32,7 +19,7 @@ export type CreateRoomRecord = {
 export abstract class RoomRepository {
   abstract createRoom(record: CreateRoomRecord): Promise<RoomMetadata>;
   abstract getRoomBySlug(slug: string): Promise<RoomMetadata>;
-  abstract saveParticipant(room: RoomMetadata, participant: Participant): Promise<void>;
+  abstract getParticipantCount(roomId: string): Promise<number>;
 }
 
 @Injectable()
@@ -86,23 +73,8 @@ export class RedisRoomRepository extends RoomRepository {
     return room;
   }
 
-  async saveParticipant(room: RoomMetadata, participant: Participant): Promise<void> {
-    const key = this.participantsKey(room.roomId);
-    const ttlMs = Math.max(new Date(room.expiresAt).getTime() - Date.now(), 1);
-
-    const result = await this.redis.eval(SAVE_PARTICIPANT_SCRIPT, {
-      keys: [key],
-      arguments: [
-        String(MAX_ROOM_PARTICIPANTS),
-        participant.participantId,
-        JSON.stringify(participant),
-        String(Math.floor(ttlMs)),
-      ],
-    });
-
-    if (result === 0) {
-      throw roomFull();
-    }
+  async getParticipantCount(roomId: string): Promise<number> {
+    return this.redis.hLen(`room:${roomId}:participants`);
   }
 
   private roomKey(roomId: string): string {
@@ -113,9 +85,6 @@ export class RedisRoomRepository extends RoomRepository {
     return `room_slug:${slug}`;
   }
 
-  private participantsKey(roomId: string): string {
-    return `room:${roomId}:participants`;
-  }
 }
 
 function parseRoomMetadata(value: unknown): RoomMetadata | undefined {

@@ -5,3 +5,6 @@ coverage/
 .env.local
 .DS_Store
 *.log
+
+# Obsidian vault and local documentation workspace
+docs/obsidian/

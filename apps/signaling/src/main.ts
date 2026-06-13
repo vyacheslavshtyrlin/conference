@@ -11,6 +11,12 @@ import { SocketGateway } from "./socketGateway.js";
 
 const config = readSignalingConfig();
 const logger = createLogger("signaling");
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("unhandled rejection", { reason: String(reason) });
+  process.exit(1);
+});
+
 const redis = createClient({ url: config.redisUrl });
 
 redis.on("error", (error) => {
@@ -21,7 +27,8 @@ await redis.connect();
 
 const repository = new RedisRoomRepository(redis);
 const mediasoup = new MediasoupService(config.mediasoup, logger);
-const roomManager = new RoomManager(repository, mediasoup, config.roomEmptyGraceMs);
+await mediasoup.init();
+const roomManager = new RoomManager(repository, mediasoup, config.roomEmptyGraceMs, logger);
 
 const server = createServer((request, response) => {
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
@@ -80,6 +87,7 @@ async function shutdown() {
   gateway.stop();
   await closeWebSocketServer();
   await closeHttpServer();
+  mediasoup.closeAll();
   await redis.quit();
 }
 

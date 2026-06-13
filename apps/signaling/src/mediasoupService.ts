@@ -35,7 +35,7 @@ type ConsumerRecord = {
 };
 
 type RuntimeRoom = {
-  worker: Worker;
+  workerIndex: number;
   router: Router;
   transports: Map<string, TransportRecord>;
   producers: Map<string, ProducerRecord>;
@@ -61,11 +61,56 @@ const mediaCodecs = [
 
 export class MediasoupService {
   private readonly rooms = new Map<string, RuntimeRoom>();
+  private workers: Worker[] = [];
+  private nextWorkerIndex = 0;
+  private onRoomDeadCallback?: (roomId: string) => void;
 
   constructor(
     private readonly config: SignalingConfig["mediasoup"],
     private readonly logger?: Logger,
   ) {}
+
+  setRoomDeadCallback(callback: (roomId: string) => void): void {
+    this.onRoomDeadCallback = callback;
+  }
+
+  async init(): Promise<void> {
+    const count = this.config.numWorkers;
+    const workers = await Promise.all(
+      Array.from({ length: count }, () =>
+        mediasoup.createWorker({
+          rtcMinPort: this.config.rtcMinPort,
+          rtcMaxPort: this.config.rtcMaxPort,
+        }),
+      ),
+    );
+
+    for (const [index, worker] of workers.entries()) {
+      worker.on("died", () => {
+        this.logger?.error("mediasoup worker died", { workerIndex: index });
+        for (const [roomId, room] of [...this.rooms.entries()]) {
+          if (room.workerIndex === index) {
+            this.closeDeadRoom(roomId);
+          }
+        }
+      });
+    }
+
+    this.workers = workers;
+    this.logger?.info("mediasoup worker pool ready", { count });
+  }
+
+  closeAll(): void {
+    // Notify RoomManager (and through it SocketGateway) for every live room so
+    // Redis participant records are cleaned up even on graceful shutdown.
+    for (const roomId of [...this.rooms.keys()]) {
+      this.closeDeadRoom(roomId);
+    }
+    for (const worker of this.workers) {
+      worker.close();
+    }
+    this.workers = [];
+  }
 
   async ensureRoom(roomId: string): Promise<RuntimeRoom> {
     const existing = this.rooms.get(roomId);
@@ -73,26 +118,22 @@ export class MediasoupService {
       return existing;
     }
 
-    const worker = await mediasoup.createWorker({
-      rtcMinPort: this.config.rtcMinPort,
-      rtcMaxPort: this.config.rtcMaxPort,
-    });
+    const workerIndex = this.nextWorkerIndex % this.workers.length;
+    this.nextWorkerIndex += 1;
+    const worker = this.workers[workerIndex];
+
+    if (!worker) {
+      throw new SignalingError("MEDIASOUP_ERROR", "Mediasoup worker pool is not initialized");
+    }
+
     const router = await worker.createRouter({ mediaCodecs });
     const room: RuntimeRoom = {
-      worker,
+      workerIndex,
       router,
       transports: new Map(),
       producers: new Map(),
       consumers: new Map(),
     };
-
-    worker.observer.once("close", () => {
-      this.rooms.delete(roomId);
-    });
-    worker.on("died", () => {
-      this.logger?.error("mediasoup worker died", { roomId });
-      this.closeDeadRoom(roomId);
-    });
 
     this.rooms.set(roomId, room);
     return room;
@@ -352,12 +393,13 @@ export class MediasoupService {
       return;
     }
 
-    room.worker.close();
+    room.router.close();
     this.rooms.delete(roomId);
   }
 
   getRuntimeStats(): {
     rooms: number;
+    workers: number;
     transports: number;
     producers: number;
     consumers: number;
@@ -374,6 +416,7 @@ export class MediasoupService {
 
     return {
       rooms: this.rooms.size,
+      workers: this.workers.length,
       transports,
       producers,
       consumers,
@@ -381,7 +424,7 @@ export class MediasoupService {
   }
 
   isReady(): boolean {
-    return true;
+    return this.workers.length > 0;
   }
 
   private async getTransport(
@@ -465,5 +508,6 @@ export class MediasoupService {
     room.producers.clear();
     room.consumers.clear();
     this.rooms.delete(roomId);
+    this.onRoomDeadCallback?.(roomId);
   }
 }

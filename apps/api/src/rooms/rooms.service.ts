@@ -4,12 +4,12 @@ import type {
   CreateRoomResponse,
   GetRoomResponse,
   JoinRoomResponse,
-  Participant,
-  RoomMetadata,
 } from "@conference/contracts";
+import { MAX_ROOM_PARTICIPANTS } from "@conference/contracts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { RoomRepository } from "./room.repository.js";
 import { RoomTokenService } from "./room-token.service.js";
+import { roomFull } from "./room-errors.js";
 
 @Injectable()
 export class RoomsService {
@@ -63,11 +63,14 @@ export class RoomsService {
 
   async joinRoom(slug: string, displayName: string, creatorToken?: string): Promise<JoinRoomResponse> {
     const room = await this.repository.getRoomBySlug(slug);
+
+    const count = await this.repository.getParticipantCount(room.roomId);
+    if (count >= MAX_ROOM_PARTICIPANTS) {
+      throw roomFull();
+    }
+
     const participantId = `peer_${randomUUID()}`;
     const isCreator = this.tokens.isCreatorTokenValid(creatorToken, room.creatorTokenHash);
-    const participant = this.createParticipant(room, participantId, displayName.trim(), isCreator);
-
-    await this.repository.saveParticipant(room, participant);
 
     return {
       participantId,
@@ -75,30 +78,10 @@ export class RoomsService {
       token: this.tokens.createJoinToken({
         roomId: room.roomId,
         participantId,
-        displayName: participant.displayName,
+        displayName: displayName.trim(),
         isCreator,
       }),
       signalingUrl: room.signalingUrl,
-    };
-  }
-
-  private createParticipant(
-    _room: RoomMetadata,
-    participantId: string,
-    displayName: string,
-    isCreator: boolean
-  ): Participant {
-    return {
-      participantId,
-      displayName,
-      isCreator,
-      joinedAt: new Date().toISOString(),
-      connectionState: "online",
-      media: {
-        mic: "off",
-        camera: "off",
-        screen: "off",
-      },
     };
   }
 

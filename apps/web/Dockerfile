@@ -20,6 +20,10 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
 CMD ["pnpm", "--filter", "@conference/web", "run", "dev"]
 
 FROM deps AS build
+ARG VITE_API_BASE_URL
+ARG VITE_SIGNALING_URL
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_SIGNALING_URL=${VITE_SIGNALING_URL}
 COPY apps/web ./apps/web
 RUN pnpm --filter @conference/web run build
 

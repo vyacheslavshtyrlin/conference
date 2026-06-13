@@ -1,0 +1,32 @@
+# Production overlay — run alongside docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# What this file does:
+#   - Switches web/api/signaling builds to their production targets
+#   - Exposes the web static-nginx on 127.0.0.1:8080 so the host nginx can proxy to it
+#     (host nginx → localhost:8080 for web, localhost:3000 for api, localhost:4000 for signaling)
+#   - Redis is already bound to 127.0.0.1 in docker-compose.yml
+#   - VITE_* vars are baked into the web bundle at build time via build.args
+
+services:
+  web:
+    build:
+      target: production
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_SIGNALING_URL: ${VITE_SIGNALING_URL}
+    ports:
+      - "127.0.0.1:8080:80"
+
+  api:
+    build:
+      target: production
+    environment:
+      NODE_ENV: production
+
+  signaling:
+    build:
+      target: production
+    environment:
+      NODE_ENV: production
+

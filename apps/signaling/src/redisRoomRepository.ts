@@ -47,9 +47,8 @@ export class RedisRoomRepository {
     }
   }
 
-  async saveParticipant(roomId: string, participant: Participant): Promise<void> {
-    const room = await this.getRoom(roomId);
-    const ttlMs = Math.max(new Date(room.expiresAt).getTime() - Date.now(), 1);
+  async saveParticipant(roomId: string, expiresAt: string, participant: Participant): Promise<void> {
+    const ttlMs = Math.max(new Date(expiresAt).getTime() - Date.now(), 1);
     const key = this.participantsKey(roomId);
 
     await this.redis.hSet(key, participant.participantId, JSON.stringify(participantSchema.parse(participant)));

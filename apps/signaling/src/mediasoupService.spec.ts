@@ -97,16 +97,19 @@ function createFakeConsumer(_producerId: string): FakeConsumer {
   return consumer;
 }
 
-function createService(overrides: Partial<ConstructorParameters<typeof MediasoupService>[0]> = {}) {
-  return new MediasoupService({
+async function createService(overrides: Partial<ConstructorParameters<typeof MediasoupService>[0]> = {}) {
+  const service = new MediasoupService({
+    numWorkers: 1,
     listenIp: "127.0.0.1",
     rtcMinPort: 40000,
-    rtcMaxPort: 40100,
+    rtcMaxPort: 49999,
     maxTransportsPerPeer: 4,
     maxProducersPerPeer: 3,
     maxConsumersPerPeer: 32,
     ...overrides,
   });
+  await service.init();
+  return service;
 }
 
 describe("MediasoupService", () => {
@@ -118,7 +121,7 @@ describe("MediasoupService", () => {
   });
 
   it("closes consumers for a producer when the producer owner leaves", async () => {
-    const service = createService();
+    const service = await createService();
     const sendTransport = await service.createWebRtcTransport("room_1", "peer_1", "send");
     const recvTransport = await service.createWebRtcTransport("room_1", "peer_2", "recv");
     const producer = await service.produce("room_1", "peer_1", sendTransport.id, "video", {}, "camera", () => {});
@@ -133,7 +136,7 @@ describe("MediasoupService", () => {
   });
 
   it("enforces per-peer producer limits", async () => {
-    const service = createService({ maxProducersPerPeer: 1 });
+    const service = await createService({ maxProducersPerPeer: 1 });
     const sendTransport = await service.createWebRtcTransport("room_1", "peer_1", "send");
 
     await service.produce("room_1", "peer_1", sendTransport.id, "audio", {}, "mic", () => {});
@@ -144,7 +147,7 @@ describe("MediasoupService", () => {
   });
 
   it("allows only one active screen share producer per room", async () => {
-    const service = createService();
+    const service = await createService();
     const firstTransport = await service.createWebRtcTransport("room_1", "peer_1", "send");
     const secondTransport = await service.createWebRtcTransport("room_1", "peer_2", "send");
 
@@ -162,7 +165,7 @@ describe("MediasoupService", () => {
   });
 
   it("releases the screen share slot when the active producer is closed", async () => {
-    const service = createService();
+    const service = await createService();
     const firstTransport = await service.createWebRtcTransport("room_1", "peer_1", "send");
     const secondTransport = await service.createWebRtcTransport("room_1", "peer_2", "send");
     const firstProducer = await service.produce("room_1", "peer_1", firstTransport.id, "video", {}, "screen", () => {});
