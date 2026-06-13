@@ -8,7 +8,7 @@
     "compose:config": "docker compose config",
     "dev": "corepack pnpm --parallel --filter @conference/web --filter @conference/api --filter @conference/signaling run dev",
     "lint": "corepack pnpm -r --if-present run lint",
-    "test": "corepack pnpm -r --if-present run test",
+    "test": "corepack pnpm --filter @conference/contracts --filter @conference/config --filter @conference/logger run build && corepack pnpm -r --if-present run test",
     "typecheck": "corepack pnpm -r --if-present run typecheck"
   },
   "devDependencies": {
