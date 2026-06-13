@@ -3,6 +3,7 @@ import type {
   ParticipantJoinedEvent,
   ParticipantLeftEvent,
   ParticipantMediaChangedEvent,
+  ParticipantActiveSpeakerChangedEvent,
   ProducerAddedEvent,
   ProducerClosedEvent,
   RoomSnapshotEvent,
@@ -14,6 +15,7 @@ type EventMap = {
   "participant:joined": ParticipantJoinedEvent;
   "participant:left": ParticipantLeftEvent;
   "participant:mediaChanged": ParticipantMediaChangedEvent;
+  "participant:activeSpeakerChanged": ParticipantActiveSpeakerChangedEvent;
   "producer:added": ProducerAddedEvent;
   "producer:closed": ProducerClosedEvent;
   disconnect: { code: number; reason: string };

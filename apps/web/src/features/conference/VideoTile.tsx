@@ -12,10 +12,22 @@ type VideoTileProps = {
   cameraOff?: boolean;
   presentation?: boolean;
   selected?: boolean;
+  activeSpeaker?: boolean;
   fullscreenLabel?: string;
   onSelect?: () => void;
   onOpenFullscreen?: () => void;
 };
+
+export function hasLiveVideoTrack(
+  stream?: MediaStream | null,
+  track?: MediaStreamTrack | null,
+): boolean {
+  if (track) return track.kind === "video" && track.readyState === "live";
+
+  return Boolean(
+    stream?.getVideoTracks().some((videoTrack) => videoTrack.readyState === "live"),
+  );
+}
 
 export function VideoTile({
   label,
@@ -26,6 +38,7 @@ export function VideoTile({
   cameraOff = false,
   presentation = false,
   selected = false,
+  activeSpeaker = false,
   fullscreenLabel = "Открыть на весь экран",
   onSelect,
   onOpenFullscreen,
@@ -56,13 +69,15 @@ export function VideoTile({
     return () => { el.srcObject = null; };
   }, [stream, track]);
 
-  const hasVideo = !cameraOff && (stream != null || track != null);
+  const hasVideo = !cameraOff && hasLiveVideoTrack(stream, track);
   const initials = label.slice(0, 2).toUpperCase();
   const isSelectable = Boolean(onSelect);
 
   return (
     <Box
       className={`video-tile ${presentation ? "video-tile--presentation" : ""} ${selected ? "video-tile--selected" : ""} ${isSelectable ? "video-tile--selectable" : ""}`}
+      data-active-speaker={activeSpeaker ? "true" : undefined}
+      data-has-video={hasVideo ? "true" : "false"}
       role={isSelectable ? "button" : undefined}
       tabIndex={isSelectable ? 0 : undefined}
       onClick={onSelect}
@@ -82,7 +97,11 @@ export function VideoTile({
 
       {!hasVideo && (
         <Box className="video-tile__empty">
-          <Box className="video-tile__avatar">{initials}</Box>
+          <Box className="video-tile__avatar-wrap">
+            <span className="video-tile__voice-wave video-tile__voice-wave--one" aria-hidden="true" />
+            <span className="video-tile__voice-wave video-tile__voice-wave--two" aria-hidden="true" />
+            <Box className="video-tile__avatar">{initials}</Box>
+          </Box>
           <Text component="p" className="video-tile__cam-off-text">Камера выключена</Text>
         </Box>
       )}

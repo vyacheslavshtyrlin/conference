@@ -4,6 +4,7 @@ import type {
   Consumer,
   DtlsParameters,
   MediaKind,
+  AudioLevelObserver,
   Producer,
   RtpCapabilities,
   RtpParameters,
@@ -37,6 +38,8 @@ type ConsumerRecord = {
 type RuntimeRoom = {
   workerIndex: number;
   router: Router;
+  audioLevelObserver: AudioLevelObserver;
+  activeSpeakerParticipantId: string | null;
   transports: Map<string, TransportRecord>;
   producers: Map<string, ProducerRecord>;
   consumers: Map<string, ConsumerRecord>;
@@ -64,6 +67,7 @@ export class MediasoupService {
   private workers: Worker[] = [];
   private nextWorkerIndex = 0;
   private onRoomDeadCallback?: (roomId: string) => void;
+  private onActiveSpeakerChangedCallback?: (roomId: string, participantId: string | null) => void;
 
   constructor(
     private readonly config: SignalingConfig["mediasoup"],
@@ -72,6 +76,10 @@ export class MediasoupService {
 
   setRoomDeadCallback(callback: (roomId: string) => void): void {
     this.onRoomDeadCallback = callback;
+  }
+
+  setActiveSpeakerChangedCallback(callback: (roomId: string, participantId: string | null) => void): void {
+    this.onActiveSpeakerChangedCallback = callback;
   }
 
   async init(): Promise<void> {
@@ -127,13 +135,33 @@ export class MediasoupService {
     }
 
     const router = await worker.createRouter({ mediaCodecs });
+    const audioLevelObserver = await router.createAudioLevelObserver({
+      maxEntries: 1,
+      threshold: -70,
+      interval: 800,
+    });
     const room: RuntimeRoom = {
       workerIndex,
       router,
+      audioLevelObserver,
+      activeSpeakerParticipantId: null,
       transports: new Map(),
       producers: new Map(),
       consumers: new Map(),
     };
+
+    audioLevelObserver.on("volumes", ([volume]) => {
+      const producerId = volume?.producer.id;
+      if (!producerId) return;
+
+      const record = room.producers.get(producerId);
+      if (!record || record.source !== "mic") return;
+
+      this.setActiveSpeaker(roomId, room, record.participantId);
+    });
+    audioLevelObserver.on("silence", () => {
+      this.setActiveSpeaker(roomId, room, null);
+    });
 
     this.rooms.set(roomId, room);
     return room;
@@ -246,9 +274,21 @@ export class MediasoupService {
 
     producer.observer.once("close", () => {
       room.producers.delete(producer.id);
+      if (source === "mic" && room.activeSpeakerParticipantId === participantId) {
+        this.setActiveSpeaker(roomId, room, null);
+      }
       this.closeConsumersForProducer(room, producer.id);
       onClose(producer.id);
     });
+
+    if (source === "mic") {
+      try {
+        await room.audioLevelObserver.addProducer({ producerId: producer.id });
+      } catch {
+        producer.close();
+        throw new SignalingError("MEDIASOUP_ERROR", "Audio level observer failed");
+      }
+    }
 
     return { id: producer.id };
   }
@@ -356,6 +396,10 @@ export class MediasoupService {
       kind: record.producer.kind,
       source: record.source,
     }));
+  }
+
+  getActiveSpeakerParticipantId(roomId: string): string | null {
+    return this.rooms.get(roomId)?.activeSpeakerParticipantId ?? null;
   }
 
   closePeer(roomId: string, participantId: string): string[] {
@@ -496,6 +540,15 @@ export class MediasoupService {
         record.consumer.close();
       }
     }
+  }
+
+  private setActiveSpeaker(roomId: string, room: RuntimeRoom, participantId: string | null): void {
+    if (room.activeSpeakerParticipantId === participantId) {
+      return;
+    }
+
+    room.activeSpeakerParticipantId = participantId;
+    this.onActiveSpeakerChangedCallback?.(roomId, participantId);
   }
 
   private closeDeadRoom(roomId: string): void {

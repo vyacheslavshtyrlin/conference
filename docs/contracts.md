@@ -43,9 +43,12 @@ Response:
   "expiresAt": "2026-06-02T12:30:00.000Z",
   "status": "active",
   "mediaNodeId": "local",
-  "signalingUrl": "ws://localhost:4000/ws"
+  "signalingUrl": "ws://localhost:4000/ws",
+  "participantCount": 2
 }
 ```
+
+`participantCount` is the number of live participants currently connected through signaling. Room lookup does not create a live participant.
 
 ### Join room
 
@@ -288,6 +291,17 @@ Error:
   }
 }
 ```
+
+#### participant:activeSpeakerChanged
+
+```json
+{
+  "type": "participant:activeSpeakerChanged",
+  "participantId": "peer_01H..."
+}
+```
+
+`participantId` is `null` when no microphone is above the server-side audio threshold.
 
 #### producer:added
 

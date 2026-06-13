@@ -81,6 +81,7 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
     screenStream,
     remoteVideoTracks,
     remoteAudioTracks,
+    activeSpeakerParticipantId,
     screenEnabled,
     canShareScreen,
     error,
@@ -120,6 +121,8 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
     (p) => p.participantId !== participantId && p.media.screen === "on",
   );
   const isScreenShareBusy = Boolean(remoteScreenParticipant && !screenEnabled);
+  const isMicUnavailable = !conference.micAvailable;
+  const isCameraUnavailable = !conference.cameraAvailable;
 
   const handleScreenShareClick = () => {
     if (screenEnabled) {
@@ -269,6 +272,7 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
             participants={participants}
             remoteVideoTracks={remoteVideoTracks}
             remoteAudioTracks={remoteAudioTracks}
+            activeSpeakerParticipantId={activeSpeakerParticipantId}
             onShareLink={handleShareLink}
           />
         )}
@@ -279,21 +283,47 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
 
         <Group className="ctrl-group" gap={8}>
           <ActionIcon
-            className={`ctrl-btn ${conference.micEnabled ? "ctrl-btn--on" : ""}`}
+            className={`ctrl-btn ${conference.micEnabled ? "ctrl-btn--on" : ""} ${isMicUnavailable ? "ctrl-btn--disabled" : ""}`}
             variant="subtle"
             onClick={toggleMic}
-            title={conference.micEnabled ? "Выключить микрофон" : "Включить микрофон"}
-            aria-label={conference.micEnabled ? "Выключить микрофон" : "Включить микрофон"}
+            disabled={isMicUnavailable}
+            title={
+              isMicUnavailable
+                ? "Микрофон недоступен"
+                : conference.micEnabled
+                  ? "Выключить микрофон"
+                  : "Включить микрофон"
+            }
+            aria-label={
+              isMicUnavailable
+                ? "Микрофон недоступен"
+                : conference.micEnabled
+                  ? "Выключить микрофон"
+                  : "Включить микрофон"
+            }
           >
             {conference.micEnabled ? <Mic size={20} /> : <MicOff size={20} />}
           </ActionIcon>
 
           <ActionIcon
-            className={`ctrl-btn ${conference.cameraEnabled ? "ctrl-btn--on" : ""}`}
+            className={`ctrl-btn ${conference.cameraEnabled ? "ctrl-btn--on" : ""} ${isCameraUnavailable ? "ctrl-btn--disabled" : ""}`}
             variant="subtle"
             onClick={toggleCamera}
-            title={conference.cameraEnabled ? "Выключить камеру" : "Включить камеру"}
-            aria-label={conference.cameraEnabled ? "Выключить камеру" : "Включить камеру"}
+            disabled={isCameraUnavailable}
+            title={
+              isCameraUnavailable
+                ? "Камера недоступна"
+                : conference.cameraEnabled
+                  ? "Выключить камеру"
+                  : "Включить камеру"
+            }
+            aria-label={
+              isCameraUnavailable
+                ? "Камера недоступна"
+                : conference.cameraEnabled
+                  ? "Выключить камеру"
+                  : "Включить камеру"
+            }
           >
             {conference.cameraEnabled ? <Camera size={20} /> : <CameraOff size={20} />}
           </ActionIcon>
@@ -340,6 +370,18 @@ export function ConferenceRoomPage({ slug }: ConferenceRoomPageProps) {
         title="Участники"
         position="right"
         size="sm"
+        withCloseButton
+        closeButtonProps={{
+          "aria-label": "Закрыть список участников",
+          size: "lg",
+        }}
+        overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
+        classNames={{
+          content: "participants-drawer",
+          header: "participants-drawer__header",
+          body: "participants-drawer__body",
+          title: "participants-drawer__title",
+        }}
       >
         <ParticipantList participants={participants} />
       </Drawer>

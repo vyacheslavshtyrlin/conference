@@ -4,7 +4,7 @@ import { RotateCcw, X } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useState } from "react";
 import type { RemoteTrackInfo } from "../../shared/webrtc/useConference";
-import { RemoteAudio, VideoTile } from "./VideoTile";
+import { hasLiveVideoTrack, RemoteAudio, VideoTile } from "./VideoTile";
 
 type VideoGridProps = {
   selfParticipantId: string;
@@ -15,6 +15,7 @@ type VideoGridProps = {
   participants: Participant[];
   remoteVideoTracks: RemoteTrackInfo[];
   remoteAudioTracks: RemoteTrackInfo[];
+  activeSpeakerParticipantId: string | null;
   onShareLink?: () => void | Promise<void>;
 };
 
@@ -27,6 +28,7 @@ type TileInfo = {
   muted: boolean;
   cameraOff?: boolean;
   presentation?: boolean;
+  isActiveSpeaker?: boolean;
 };
 
 function getGridClass(count: number): string {
@@ -43,6 +45,10 @@ function clampZoom(value: number): number {
   return Math.min(4, Math.max(1, value));
 }
 
+function tileHasMedia(tile: TileInfo): boolean {
+  return !tile.cameraOff && hasLiveVideoTrack(tile.stream, tile.track);
+}
+
 export function VideoGrid({
   selfParticipantId,
   localStream,
@@ -52,6 +58,7 @@ export function VideoGrid({
   participants,
   remoteVideoTracks,
   remoteAudioTracks,
+  activeSpeakerParticipantId,
   onShareLink,
 }: VideoGridProps) {
   const [fullscreenTile, setFullscreenTile] = useState<TileInfo | null>(null);
@@ -113,27 +120,29 @@ export function VideoGrid({
       track: null,
       muted: true,
       cameraOff: !localCameraEnabled,
+      isActiveSpeaker: activeSpeakerParticipantId === selfParticipantId,
     },
     ...remoteParticipants
       .filter((p) => p.participantId !== activeScreenParticipantId)
       .map((p) => {
-      const cameraInfo = cameraTrackByParticipant.get(p.participantId);
-      return {
-        key: p.participantId,
-        label: p.displayName,
-        isCreator: p.isCreator,
-        stream: null,
-        track: cameraInfo?.track ?? null,
-        muted: false,
-        cameraOff: p.media.camera !== "on" || !cameraInfo,
-      };
-    }),
+        const cameraInfo = cameraTrackByParticipant.get(p.participantId);
+        return {
+          key: p.participantId,
+          label: p.displayName,
+          isCreator: p.isCreator,
+          stream: null,
+          track: cameraInfo?.track ?? null,
+          muted: false,
+          cameraOff: p.media.camera !== "on" || !cameraInfo,
+          isActiveSpeaker: activeSpeakerParticipantId === p.participantId,
+        };
+      }),
   ].filter((tile) => tile.key !== activeScreenParticipantId);
 
   const tileCount = cameraTiles.length;
   const spotlightTile =
     !activeScreenTile && tileCount > 1
-      ? cameraTiles.find((tile) => tile.key === spotlightTileKey) ?? null
+      ? cameraTiles.find((tile) => tile.key === spotlightTileKey && tileHasMedia(tile)) ?? null
       : null;
   const sideTiles = spotlightTile
     ? cameraTiles.filter((tile) => tile.key !== spotlightTile.key)
@@ -185,8 +194,9 @@ export function VideoGrid({
                   track={tile.track}
                   muted={tile.muted}
                   cameraOff={tile.cameraOff}
+                  activeSpeaker={tile.isActiveSpeaker}
                   fullscreenLabel={`Открыть ${tile.label} на весь экран`}
-                  onOpenFullscreen={() => openFullscreen(tile)}
+                  onOpenFullscreen={tileHasMedia(tile) ? () => openFullscreen(tile) : undefined}
                 />
               ))}
             </Box>
@@ -206,6 +216,7 @@ export function VideoGrid({
                   muted={spotlightTile.muted}
                   cameraOff={spotlightTile.cameraOff}
                   selected
+                  activeSpeaker={spotlightTile.isActiveSpeaker}
                   fullscreenLabel={`Открыть ${spotlightTile.label} на весь экран`}
                   onSelect={() => setSpotlightTileKey(null)}
                   onOpenFullscreen={() => openFullscreen(spotlightTile)}
@@ -222,9 +233,10 @@ export function VideoGrid({
                     track={tile.track}
                     muted={tile.muted}
                     cameraOff={tile.cameraOff}
+                    activeSpeaker={tile.isActiveSpeaker}
                     fullscreenLabel={`Открыть ${tile.label} на весь экран`}
-                    onSelect={() => setSpotlightTileKey(tile.key)}
-                    onOpenFullscreen={() => openFullscreen(tile)}
+                    onSelect={tileHasMedia(tile) ? () => setSpotlightTileKey(tile.key) : undefined}
+                    onOpenFullscreen={tileHasMedia(tile) ? () => openFullscreen(tile) : undefined}
                   />
                 ))}
               </Box>
@@ -240,9 +252,10 @@ export function VideoGrid({
                   track={tile.track}
                   muted={tile.muted}
                   cameraOff={tile.cameraOff}
+                  activeSpeaker={tile.isActiveSpeaker}
                   fullscreenLabel={`Открыть ${tile.label} на весь экран`}
-                  onSelect={tileCount > 1 ? () => setSpotlightTileKey(tile.key) : undefined}
-                  onOpenFullscreen={() => openFullscreen(tile)}
+                  onSelect={tileCount > 1 && tileHasMedia(tile) ? () => setSpotlightTileKey(tile.key) : undefined}
+                  onOpenFullscreen={tileHasMedia(tile) ? () => openFullscreen(tile) : undefined}
                 />
               ))}
             </Box>
@@ -303,6 +316,7 @@ export function VideoGrid({
               muted={fullscreenTile.muted}
               cameraOff={fullscreenTile.cameraOff}
               presentation={fullscreenTile.presentation}
+              activeSpeaker={fullscreenTile.isActiveSpeaker}
             />
           </Box>
 

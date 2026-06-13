@@ -50,6 +50,7 @@ export class RoomsService {
 
   async getRoom(slug: string): Promise<GetRoomResponse> {
     const room = await this.repository.getRoomBySlug(slug);
+    const participantCount = await this.repository.getParticipantCount(room.roomId);
 
     return {
       roomId: room.roomId,
@@ -58,6 +59,7 @@ export class RoomsService {
       status: room.status,
       mediaNodeId: room.mediaNodeId,
       signalingUrl: room.signalingUrl,
+      participantCount,
     };
   }
 

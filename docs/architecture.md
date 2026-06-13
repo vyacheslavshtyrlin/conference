@@ -143,6 +143,7 @@ Redis используется для:
 - SocketGateway отвечает за protocol boundary и validation входящих событий.
 - Все входящие WebSocket payloads валидируются schema-first подходом, например Zod.
 - Нельзя доверять client state: сервер является источником правды для participants/producers.
+- Active speaker является live state signaling/media: mediasoup `AudioLevelObserver` определяет говорящего по mic producers и SocketGateway рассылает `participant:activeSpeakerChanged`. Это состояние не хранится в Redis и не проходит через REST API.
 
 ## Recording extension point
 

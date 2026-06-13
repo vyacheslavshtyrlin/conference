@@ -51,8 +51,14 @@ class FakeMediasoupService {
     this.roomDeadCallback = callback;
   }
 
+  setActiveSpeakerChangedCallback(_callback: (roomId: string, participantId: string | null) => void): void {}
+
   async ensureRoom(): Promise<void> {
     this.ensureRoomCalls += 1;
+  }
+
+  getActiveSpeakerParticipantId(): string | null {
+    return null;
   }
 
   simulateWorkerDeath(roomId: string): void {

@@ -11,6 +11,7 @@ import { RoomsService } from "./rooms.service.js";
 class InMemoryRoomRepository extends RoomRepository {
   readonly rooms = new Map<string, RoomMetadata>();
   readonly slugs = new Map<string, string>();
+  readonly participantCounts = new Map<string, number>();
   async createRoom(record: CreateRoomRecord): Promise<RoomMetadata> {
     const room: RoomMetadata = { ...record, status: "active" };
     this.rooms.set(room.roomId, room);
@@ -29,8 +30,8 @@ class InMemoryRoomRepository extends RoomRepository {
     return room;
   }
 
-  async getParticipantCount(_roomId: string): Promise<number> {
-    return 0;
+  async getParticipantCount(roomId: string): Promise<number> {
+    return this.participantCounts.get(roomId) ?? 0;
   }
 
 }
@@ -93,6 +94,17 @@ describe("RoomsService", () => {
     const join = await service.joinRoom(room.slug, "Alex", room.creatorToken);
 
     expect(join.signalingUrl).toBe("wss://media-2.test/ws");
+  });
+
+  it("returns live participant count in room lookup", async () => {
+    const { repository, service } = createService();
+    const room = await service.createRoom();
+    repository.participantCounts.set(room.roomId, 3);
+
+    await expect(service.getRoom(room.slug)).resolves.toMatchObject({
+      roomId: room.roomId,
+      participantCount: 3,
+    });
   });
 
   it("issues signaling tokens accepted by the signaling token verifier", async () => {

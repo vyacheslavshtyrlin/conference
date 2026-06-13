@@ -1,6 +1,6 @@
 import type { Participant } from "@conference/contracts";
 import { Badge, Box, Text, Tooltip } from "@mantine/core";
-import { Mic, MicOff, MonitorUp, Video, VideoOff } from "lucide-react";
+import { Mic, MicOff, MonitorUp, UserRound, Video, VideoOff } from "lucide-react";
 
 type ParticipantListProps = { participants: Participant[] };
 
@@ -15,11 +15,37 @@ function formatConnectionState(state: Participant["connectionState"]): string {
 
 export function ParticipantList({ participants }: ParticipantListProps) {
   if (participants.length === 0) {
-    return <Text component="p" className="participant-empty">Участников пока нет.</Text>;
+    return (
+      <Box className="participant-panel">
+        <Box className="participant-empty">
+          <UserRound size={28} strokeWidth={1.6} />
+          <Text component="p">Участников пока нет.</Text>
+        </Box>
+      </Box>
+    );
   }
 
+  const onlineCount = participants.filter((p) => p.connectionState === "online").length;
+  const screenCount = participants.filter((p) => p.media.screen === "on").length;
+
   return (
-    <Box>
+    <Box className="participant-panel">
+      <Box className="participant-panel__summary">
+        <Box>
+          <Text component="p" className="participant-panel__eyebrow">В комнате</Text>
+          <Text component="p" className="participant-panel__count">{participants.length}</Text>
+        </Box>
+        <Box className="participant-panel__metrics">
+          <Badge className="participant-summary-badge participant-summary-badge--online" variant="light">
+            Онлайн {onlineCount}
+          </Badge>
+          <Badge className="participant-summary-badge participant-summary-badge--screen" variant="light">
+            Экран {screenCount}
+          </Badge>
+        </Box>
+      </Box>
+
+      <Box className="participant-list">
       {participants.map((p) => {
         const micClass =
           p.media.mic === "on" ? "media-chip--on" :
@@ -28,11 +54,21 @@ export function ParticipantList({ participants }: ParticipantListProps) {
 
         const camClass = p.media.camera === "on" ? "media-chip--on" : "media-chip--off";
         const screenOn = p.media.screen === "on";
+        const micLabel =
+          p.media.mic === "on"
+            ? "Микрофон включен"
+            : p.media.mic === "muted"
+              ? "Микрофон выключен"
+              : "Микрофон недоступен";
 
         return (
-          <Box key={p.participantId} className="participant-item">
+          <Box
+            key={p.participantId}
+            className={`participant-item ${screenOn ? "participant-item--screen" : ""}`}
+          >
             <Box className="participant-avatar">
               {p.displayName.slice(0, 2).toUpperCase()}
+              <span className="participant-avatar__status" aria-hidden="true" />
             </Box>
 
             <Box className="participant-info">
@@ -44,11 +80,14 @@ export function ParticipantList({ participants }: ParticipantListProps) {
                   </Badge>
                 )}
               </Box>
-              <Text className="participant-state">{formatConnectionState(p.connectionState)}</Text>
+              <Text className="participant-state">
+                {formatConnectionState(p.connectionState)}
+                {screenOn ? " · показывает экран" : ""}
+              </Text>
             </Box>
 
             <Box className="participant-media">
-              <Tooltip label={p.media.mic === "on" ? "Микрофон включен" : "Микрофон выключен"} withArrow>
+              <Tooltip label={micLabel} withArrow>
                 <Box className={`media-chip ${micClass}`}>
                   {p.media.mic === "on" ? <Mic size={13} /> : <MicOff size={13} />}
                 </Box>
@@ -69,6 +108,7 @@ export function ParticipantList({ participants }: ParticipantListProps) {
           </Box>
         );
       })}
+      </Box>
     </Box>
   );
 }

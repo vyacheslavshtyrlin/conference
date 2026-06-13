@@ -36,6 +36,7 @@ export const getRoomResponseSchema = z.object({
   status: roomStatusSchema,
   mediaNodeId: z.string().min(1),
   signalingUrl: z.string().url(),
+  participantCount: z.number().int().nonnegative(),
 });
 
 export const joinRoomRequestSchema = z.object({
@@ -237,6 +238,11 @@ export const participantMediaChangedEventSchema = z.object({
   media: participantMediaSchema,
 });
 
+export const participantActiveSpeakerChangedEventSchema = z.object({
+  type: z.literal("participant:activeSpeakerChanged"),
+  participantId: z.string().min(1).nullable(),
+});
+
 export const producerAddedEventSchema = z.object({
   type: z.literal("producer:added"),
   producerId: z.string().min(1),
@@ -258,6 +264,7 @@ export const serverWebSocketEventSchema = z.union([
   participantJoinedEventSchema,
   participantLeftEventSchema,
   participantMediaChangedEventSchema,
+  participantActiveSpeakerChangedEventSchema,
   producerAddedEventSchema,
   producerClosedEventSchema,
 ]);
@@ -269,6 +276,7 @@ export type RoomSnapshotEvent = z.infer<typeof roomSnapshotEventSchema>;
 export type ParticipantJoinedEvent = z.infer<typeof participantJoinedEventSchema>;
 export type ParticipantLeftEvent = z.infer<typeof participantLeftEventSchema>;
 export type ParticipantMediaChangedEvent = z.infer<typeof participantMediaChangedEventSchema>;
+export type ParticipantActiveSpeakerChangedEvent = z.infer<typeof participantActiveSpeakerChangedEventSchema>;
 export type ProducerAddedEvent = z.infer<typeof producerAddedEventSchema>;
 export type ProducerClosedEvent = z.infer<typeof producerClosedEventSchema>;
 export type ServerWebSocketEvent = z.infer<typeof serverWebSocketEventSchema>;

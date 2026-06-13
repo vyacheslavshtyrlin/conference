@@ -50,6 +50,12 @@ export class SocketGateway {
     this.roomManager.setParticipantEvictedCallback((roomId, participantId) => {
       this.handleParticipantEvicted(roomId, participantId);
     });
+    this.roomManager.setActiveSpeakerChangedCallback((roomId, participantId) => {
+      this.broadcast(roomId, {
+        type: "participant:activeSpeakerChanged",
+        participantId,
+      });
+    });
 
     this.wsServer.on("connection", (socket, request) => {
       void this.handleConnection(socket, request);
@@ -280,6 +286,11 @@ export class SocketGateway {
       type: "room:snapshot",
       roomId: room.roomId,
       participants,
+    });
+
+    this.send(context.socket, {
+      type: "participant:activeSpeakerChanged",
+      participantId: this.roomManager.getActiveSpeakerParticipantId(room.roomId),
     });
 
     for (const producer of this.roomManager.listProducers(room.roomId)) {

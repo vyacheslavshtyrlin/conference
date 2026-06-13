@@ -23,8 +23,11 @@ export type ConferenceState = {
   screenStream: MediaStream | null;
   remoteVideoTracks: RemoteTrackInfo[];
   remoteAudioTracks: RemoteTrackInfo[];
+  activeSpeakerParticipantId: string | null;
   micEnabled: boolean;
+  micAvailable: boolean;
   cameraEnabled: boolean;
+  cameraAvailable: boolean;
   screenEnabled: boolean;
   canShareScreen: boolean;
   error: string | null;
@@ -62,6 +65,27 @@ type ConsumeData = {
   source: "mic" | "camera" | "screen";
 };
 
+type InputDeviceAvailability = {
+  mic: boolean;
+  camera: boolean;
+};
+
+async function getInputDeviceAvailability(): Promise<InputDeviceAvailability> {
+  if (!navigator.mediaDevices) {
+    return { mic: false, camera: false };
+  }
+
+  if (typeof navigator.mediaDevices.enumerateDevices !== "function") {
+    return { mic: true, camera: true };
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return {
+    mic: devices.some((device) => device.kind === "audioinput"),
+    camera: devices.some((device) => device.kind === "videoinput"),
+  };
+}
+
 export function useConference({
   signalingUrl,
   token,
@@ -82,8 +106,11 @@ export function useConference({
   const [remoteAudioTracks, setRemoteAudioTracks] = useState<RemoteTrackInfo[]>(
     [],
   );
+  const [activeSpeakerParticipantId, setActiveSpeakerParticipantId] = useState<string | null>(null);
   const [micEnabled, setMicEnabled] = useState(initialMicEnabled);
+  const [micAvailable, setMicAvailable] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(initialCameraEnabled);
+  const [cameraAvailable, setCameraAvailable] = useState(true);
   const [screenEnabled, setScreenEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [canShareScreen] = useState(
@@ -109,9 +136,14 @@ export function useConference({
     screen: "off",
   });
   const micEnabledRef = useRef(initialMicEnabled);
+  const micAvailableRef = useRef(true);
   const cameraEnabledRef = useRef(initialCameraEnabled);
+  const cameraAvailableRef = useRef(true);
   const screenEnabledRef = useRef(false);
   const leavingRef = useRef(false);
+  const activeSpeakerParticipantIdRef = useRef<string | null>(null);
+  const pendingActiveSpeakerParticipantIdRef = useRef<string | null>(null);
+  const activeSpeakerTimerRef = useRef<number | null>(null);
 
   // Pending producers that arrive before recv transport is ready
   const pendingProducersRef = useRef<ProducerAddedEvent[]>([]);
@@ -130,12 +162,167 @@ export function useConference({
 
   // ------------------------------------------------------------------ helpers
 
+  function clearActiveSpeakerTimer(): void {
+    if (activeSpeakerTimerRef.current === null) return;
+
+    window.clearTimeout(activeSpeakerTimerRef.current);
+    activeSpeakerTimerRef.current = null;
+  }
+
+  function setDisplayedActiveSpeaker(participantId: string | null): void {
+    clearActiveSpeakerTimer();
+    pendingActiveSpeakerParticipantIdRef.current = null;
+    activeSpeakerParticipantIdRef.current = participantId;
+    setActiveSpeakerParticipantId(participantId);
+  }
+
+  function scheduleActiveSpeaker(participantId: string | null): void {
+    if (
+      activeSpeakerParticipantIdRef.current === participantId &&
+      pendingActiveSpeakerParticipantIdRef.current === null
+    ) {
+      return;
+    }
+
+    clearActiveSpeakerTimer();
+    pendingActiveSpeakerParticipantIdRef.current = participantId;
+
+    activeSpeakerTimerRef.current = window.setTimeout(() => {
+      activeSpeakerTimerRef.current = null;
+      pendingActiveSpeakerParticipantIdRef.current = null;
+      activeSpeakerParticipantIdRef.current = participantId;
+      setActiveSpeakerParticipantId(participantId);
+    }, participantId ? 180 : 900);
+  }
+
   function sendMediaState(partial: Partial<ParticipantMedia>): void {
     const next = { ...mediaStateRef.current, ...partial };
     mediaStateRef.current = next;
     signalingRef.current
       ?.request({ type: "media:setState", media: next })
       .catch(() => {});
+  }
+
+  function markMicUnavailable(): void {
+    micAvailableRef.current = false;
+    micEnabledRef.current = false;
+    setMicAvailable(false);
+    setMicEnabled(false);
+    sendMediaState({ mic: "off" });
+  }
+
+  async function startMic(): Promise<void> {
+    if (!micAvailableRef.current) return;
+
+    const device = deviceRef.current;
+    const sendTransport = sendTransportRef.current;
+    if (!device || !sendTransport || !device.canProduce("audio")) {
+      markMicUnavailable();
+      return;
+    }
+
+    let micStream: MediaStream | null = null;
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false,
+      });
+
+      const audioTrack = micStream.getAudioTracks()[0];
+      if (!audioTrack || audioTrack.readyState !== "live") {
+        micStream.getTracks().forEach((track) => track.stop());
+        markMicUnavailable();
+        return;
+      }
+
+      const producer = await sendTransport.produce({
+        track: audioTrack,
+        appData: { source: "mic" },
+      });
+
+      audioProducerRef.current = producer;
+
+      const videoTracks = localStreamRef.current?.getVideoTracks() ?? [];
+      const nextStream = new MediaStream([audioTrack, ...videoTracks]);
+      localStreamRef.current = nextStream;
+      setLocalStream(nextStream);
+
+      micAvailableRef.current = true;
+      micEnabledRef.current = true;
+      setMicAvailable(true);
+      setMicEnabled(true);
+      sendMediaState({ mic: "on" });
+    } catch (err) {
+      micStream?.getTracks().forEach((track) => track.stop());
+      markMicUnavailable();
+      if (err instanceof Error && err.name !== "NotAllowedError") {
+        setError("Microphone is unavailable: " + err.message);
+      }
+    }
+  }
+
+  function markCameraUnavailable(): void {
+    cameraAvailableRef.current = false;
+    cameraEnabledRef.current = false;
+    setCameraAvailable(false);
+    setCameraEnabled(false);
+    sendMediaState({ camera: "off" });
+  }
+
+  async function startCamera(): Promise<void> {
+    if (!cameraAvailableRef.current) return;
+
+    const device = deviceRef.current;
+    const sendTransport = sendTransportRef.current;
+    if (!device || !sendTransport || !device.canProduce("video")) {
+      markCameraUnavailable();
+      return;
+    }
+
+    let cameraStream: MediaStream | null = null;
+    try {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+
+      const videoTrack = cameraStream.getVideoTracks()[0];
+      if (!videoTrack || videoTrack.readyState !== "live") {
+        cameraStream.getTracks().forEach((track) => track.stop());
+        markCameraUnavailable();
+        return;
+      }
+
+      const producer = await sendTransport.produce({
+        track: videoTrack,
+        encodings: [
+          { maxBitrate: 100_000 },
+          { maxBitrate: 300_000 },
+          { maxBitrate: 900_000 },
+        ],
+        codecOptions: { videoGoogleStartBitrate: 1000 },
+        appData: { source: "camera" },
+      });
+
+      videoProducerRef.current = producer;
+
+      const audioTracks = localStreamRef.current?.getAudioTracks() ?? [];
+      const nextStream = new MediaStream([...audioTracks, videoTrack]);
+      localStreamRef.current = nextStream;
+      setLocalStream(nextStream);
+
+      cameraAvailableRef.current = true;
+      cameraEnabledRef.current = true;
+      setCameraAvailable(true);
+      setCameraEnabled(true);
+      sendMediaState({ camera: "on" });
+    } catch (err) {
+      cameraStream?.getTracks().forEach((track) => track.stop());
+      markCameraUnavailable();
+      if (err instanceof Error && err.name !== "NotAllowedError") {
+        setError("Camera is unavailable: " + err.message);
+      }
+    }
   }
 
   async function consumeProducer(event: ProducerAddedEvent): Promise<void> {
@@ -306,9 +493,15 @@ export function useConference({
   // ------------------------------------------------------------------ actions
 
   function toggleMic(): void {
+    if (!micAvailableRef.current) return;
+
     const stream = localStreamRef.current;
     const audioTrack = stream?.getAudioTracks()[0];
-    if (!audioTrack) return;
+    if (!audioTrack || audioTrack.readyState !== "live") {
+      void startMic();
+      return;
+    }
+
     const newEnabled = !micEnabledRef.current;
     audioTrack.enabled = newEnabled;
     micEnabledRef.current = newEnabled;
@@ -317,9 +510,15 @@ export function useConference({
   }
 
   function toggleCamera(): void {
+    if (!cameraAvailableRef.current) return;
+
     const stream = localStreamRef.current;
     const videoTrack = stream?.getVideoTracks()[0];
-    if (!videoTrack) return;
+    if (!videoTrack || videoTrack.readyState !== "live") {
+      void startCamera();
+      return;
+    }
+
     const newEnabled = !cameraEnabledRef.current;
     videoTrack.enabled = newEnabled;
     cameraEnabledRef.current = newEnabled;
@@ -462,6 +661,12 @@ export function useConference({
       setParticipants((prev) =>
         prev.filter((p) => p.participantId !== event.participantId),
       );
+      if (
+        activeSpeakerParticipantIdRef.current === event.participantId ||
+        pendingActiveSpeakerParticipantIdRef.current === event.participantId
+      ) {
+        setDisplayedActiveSpeaker(null);
+      }
     });
 
     signaling.on("participant:mediaChanged", (event) => {
@@ -472,6 +677,10 @@ export function useConference({
             : p,
         ),
       );
+    });
+
+    signaling.on("participant:activeSpeakerChanged", (event) => {
+      scheduleActiveSpeaker(event.participantId);
     });
 
     signaling.on("producer:added", (event) => {
@@ -544,9 +753,34 @@ export function useConference({
         const sendTransport = await createSendTransport(signaling, device);
         sendTransportRef.current = sendTransport;
 
+        const inputAvailability = await getInputDeviceAvailability().catch(() => ({
+          mic: true,
+          camera: true,
+        }));
+
+        micAvailableRef.current = inputAvailability.mic;
+        cameraAvailableRef.current = inputAvailability.camera;
+        setMicAvailable(inputAvailability.mic);
+        setCameraAvailable(inputAvailability.camera);
+
+        const unavailableMedia: Partial<ParticipantMedia> = {};
+        if (!inputAvailability.mic) {
+          micEnabledRef.current = false;
+          setMicEnabled(false);
+          unavailableMedia.mic = "off";
+        }
+        if (!inputAvailability.camera) {
+          cameraEnabledRef.current = false;
+          setCameraEnabled(false);
+          unavailableMedia.camera = "off";
+        }
+        if (Object.keys(unavailableMedia).length > 0) {
+          sendMediaState(unavailableMedia);
+        }
+
         // Acquire and publish local media
-        const wantAudio = initialMicEnabled;
-        const wantVideo = initialCameraEnabled;
+        const wantAudio = initialMicEnabled && inputAvailability.mic;
+        const wantVideo = initialCameraEnabled && inputAvailability.camera;
 
         if (wantAudio || wantVideo) {
           try {
@@ -575,6 +809,7 @@ export function useConference({
             setLocalStream(stream);
 
             const audioTrack = stream.getAudioTracks()[0];
+            let didProduceAudio = false;
             if (audioTrack && device.canProduce("audio")) {
               audioTrack.enabled = initialMicEnabled;
               const producer = await sendTransport.produce({
@@ -582,10 +817,12 @@ export function useConference({
                 appData: { source: "mic" },
               });
               audioProducerRef.current = producer;
+              didProduceAudio = true;
             }
 
             const videoTrack = stream.getVideoTracks()[0];
-            if (videoTrack && device.canProduce("video")) {
+            let didProduceVideo = false;
+            if (videoTrack && videoTrack.readyState === "live" && device.canProduce("video")) {
               videoTrack.enabled = initialCameraEnabled;
               const producer = await sendTransport.produce({
                 track: videoTrack,
@@ -598,11 +835,24 @@ export function useConference({
                 appData: { source: "camera" },
               });
               videoProducerRef.current = producer;
+              didProduceVideo = true;
             }
 
+            const nextMicAvailable = wantAudio ? didProduceAudio : true;
+            micAvailableRef.current = nextMicAvailable;
+            micEnabledRef.current = didProduceAudio && initialMicEnabled;
+            setMicAvailable(nextMicAvailable);
+            setMicEnabled(didProduceAudio && initialMicEnabled);
+
+            const nextCameraAvailable = wantVideo ? didProduceVideo : true;
+            cameraAvailableRef.current = nextCameraAvailable;
+            cameraEnabledRef.current = didProduceVideo && initialCameraEnabled;
+            setCameraAvailable(nextCameraAvailable);
+            setCameraEnabled(didProduceVideo && initialCameraEnabled);
+
             sendMediaState({
-              mic: initialMicEnabled ? "on" : "off",
-              camera: initialCameraEnabled ? "on" : "off",
+              mic: didProduceAudio && initialMicEnabled ? "on" : "off",
+              camera: didProduceVideo && initialCameraEnabled ? "on" : "off",
             });
           } catch (mediaErr) {
             const msg =
@@ -612,6 +862,15 @@ export function useConference({
                   : mediaErr.message
                 : "Could not access media devices.";
             setError(msg);
+            micAvailableRef.current = !wantAudio;
+            micEnabledRef.current = false;
+            setMicAvailable(!wantAudio);
+            setMicEnabled(false);
+            cameraAvailableRef.current = !wantVideo;
+            cameraEnabledRef.current = false;
+            setCameraAvailable(!wantVideo);
+            setCameraEnabled(false);
+            sendMediaState({ mic: "off", camera: "off" });
             // Non-fatal — continue connected without media
           }
         }
@@ -628,6 +887,7 @@ export function useConference({
     void run();
 
     return () => {
+      clearActiveSpeakerTimer();
       if (!leavingRef.current) {
         leavingRef.current = true;
         signaling.request({ type: "room:leave" }).catch(() => {});
@@ -647,8 +907,11 @@ export function useConference({
     screenStream,
     remoteVideoTracks,
     remoteAudioTracks,
+    activeSpeakerParticipantId,
     micEnabled,
+    micAvailable,
     cameraEnabled,
+    cameraAvailable,
     screenEnabled,
     canShareScreen,
     error,

@@ -27,9 +27,16 @@ type FakeConsumer = {
   close: () => void;
 };
 
+type FakeAudioLevelObserver = EventEmitter & {
+  addProducer: () => Promise<void>;
+  removeProducer: () => Promise<void>;
+  close: () => void;
+};
+
 let transportCounter = 0;
 let producerCounter = 0;
 let consumerCounter = 0;
+let fakeAudioLevelObservers: FakeAudioLevelObserver[] = [];
 
 function createFakeWorker() {
   const worker = new EventEmitter() as EventEmitter & {
@@ -49,8 +56,20 @@ function createFakeRouter() {
   return {
     rtpCapabilities: {},
     canConsume: () => true,
+    createAudioLevelObserver: async () => createFakeAudioLevelObserver(),
     createWebRtcTransport: async () => createFakeTransport(),
   };
+}
+
+function createFakeAudioLevelObserver(): FakeAudioLevelObserver {
+  const observer = new EventEmitter() as FakeAudioLevelObserver;
+  observer.addProducer = async () => {};
+  observer.removeProducer = async () => {};
+  observer.close = () => {
+    observer.emit("close");
+  };
+  fakeAudioLevelObservers.push(observer);
+  return observer;
 }
 
 function createFakeTransport() {
@@ -117,6 +136,7 @@ describe("MediasoupService", () => {
     transportCounter = 0;
     producerCounter = 0;
     consumerCounter = 0;
+    fakeAudioLevelObservers = [];
     createWorker.mockResolvedValue(createFakeWorker());
   });
 
@@ -175,5 +195,20 @@ describe("MediasoupService", () => {
     await expect(
       service.produce("room_1", "peer_2", secondTransport.id, "video", {}, "screen", () => {}),
     ).resolves.toMatchObject({ id: expect.stringMatching(/^producer_/) });
+  });
+
+  it("emits active speaker changes from mic audio levels and silence", async () => {
+    const service = await createService();
+    const changes: Array<string | null> = [];
+    service.setActiveSpeakerChangedCallback((_roomId, participantId) => {
+      changes.push(participantId);
+    });
+    const sendTransport = await service.createWebRtcTransport("room_1", "peer_1", "send");
+    const producer = await service.produce("room_1", "peer_1", sendTransport.id, "audio", {}, "mic", () => {});
+
+    fakeAudioLevelObservers[0]?.emit("volumes", [{ producer: { id: producer.id }, volume: -32 }]);
+    fakeAudioLevelObservers[0]?.emit("silence");
+
+    expect(changes).toEqual(["peer_1", null]);
   });
 });

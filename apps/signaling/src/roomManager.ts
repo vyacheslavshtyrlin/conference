@@ -19,6 +19,7 @@ export class RoomManager {
   private readonly rooms = new Map<string, RuntimeRoomState>();
   private readonly roomLocks = new Map<string, Mutex>();
   private onParticipantEvictedCallback?: (roomId: string, participantId: string) => void;
+  private onActiveSpeakerChangedCallback?: (roomId: string, participantId: string | null) => void;
 
   constructor(
     private readonly repository: RedisRoomRepository,
@@ -29,10 +30,17 @@ export class RoomManager {
     mediasoup.setRoomDeadCallback((roomId) => {
       this.handleRoomDead(roomId);
     });
+    mediasoup.setActiveSpeakerChangedCallback((roomId, participantId) => {
+      this.onActiveSpeakerChangedCallback?.(roomId, participantId);
+    });
   }
 
   setParticipantEvictedCallback(callback: (roomId: string, participantId: string) => void): void {
     this.onParticipantEvictedCallback = callback;
+  }
+
+  setActiveSpeakerChangedCallback(callback: (roomId: string, participantId: string | null) => void): void {
+    this.onActiveSpeakerChangedCallback = callback;
   }
 
   async join(payload: JoinTokenPayload): Promise<{ room: RoomMetadata; participant: Participant; participants: Participant[] }> {
@@ -146,6 +154,10 @@ export class RoomManager {
 
   listProducers(roomId: string) {
     return this.mediasoup.listProducers(roomId);
+  }
+
+  getActiveSpeakerParticipantId(roomId: string): string | null {
+    return this.mediasoup.getActiveSpeakerParticipantId(roomId);
   }
 
   async leave(roomId: string, participantId: string): Promise<Participant | undefined> {

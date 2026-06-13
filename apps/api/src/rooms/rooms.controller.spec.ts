@@ -16,6 +16,7 @@ import { RoomsService } from "./rooms.service.js";
 class InMemoryRoomRepository extends RoomRepository {
   readonly rooms = new Map<string, RoomMetadata>();
   readonly slugs = new Map<string, string>();
+  readonly participantCounts = new Map<string, number>();
 
   async createRoom(record: CreateRoomRecord): Promise<RoomMetadata> {
     const room: RoomMetadata = { ...record, status: "active" };
@@ -35,8 +36,8 @@ class InMemoryRoomRepository extends RoomRepository {
     return room;
   }
 
-  async getParticipantCount(_roomId: string): Promise<number> {
-    return 0;
+  async getParticipantCount(roomId: string): Promise<number> {
+    return this.participantCounts.get(roomId) ?? 0;
   }
 }
 
@@ -104,6 +105,7 @@ describe("RoomsController", () => {
           status: "active",
           mediaNodeId: "local",
           signalingUrl: "ws://signaling.test/ws",
+          participantCount: 0,
         });
       });
 
