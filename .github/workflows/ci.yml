@@ -9,7 +9,7 @@ on:
 
 jobs:
   verify:
-    name: Verify monorepo
+    name: Verify MVP repository
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,6 +41,17 @@ jobs:
       - name: Validate Docker Compose config
         run: docker compose config
 
+      - name: Validate production Docker Compose config
+        env:
+          VITE_API_BASE_URL: https://example.com/api/v1
+          VITE_SIGNALING_URL: wss://example.com/ws
+          WEB_PUBLIC_URL: https://example.com
+          SIGNALING_PUBLIC_URL: wss://example.com/ws
+          JOIN_TOKEN_SECRET: test-secret
+          WS_ALLOWED_ORIGINS: https://example.com
+          MEDIASOUP_ANNOUNCED_IP: 127.0.0.1
+        run: docker compose -f docker-compose.prod.yml config
+
   deploy:
     name: Deploy MVP server
     needs: verify
@@ -67,4 +78,4 @@ jobs:
           printf '%s\n' "$MVP_DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan "$MVP_DEPLOY_HOST" >> ~/.ssh/known_hosts
-          ssh "$MVP_DEPLOY_USER@$MVP_DEPLOY_HOST" "cd '$MVP_DEPLOY_PATH' && git pull --ff-only && if [ -f docker-compose.prod.yml ]; then docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build; else docker compose up -d --build; fi"
+          ssh "$MVP_DEPLOY_USER@$MVP_DEPLOY_HOST" "cd '$MVP_DEPLOY_PATH' && git pull --ff-only && docker compose -f docker-compose.prod.yml up -d --build"

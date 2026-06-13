@@ -55,12 +55,28 @@ Open ports:
 
 The current compose file exposes mediasoup `40000-40100` for the MVP server. Wider ranges can be configured later.
 
-## DuckDNS setup
+## Current MVP server
 
-1. Create a DuckDNS subdomain, for example:
+Concrete values for the first MVP deployment are documented in Russian in
+[`deployment-mvp-start.md`](deployment-mvp-start.md).
+
+Current known values:
 
 ```text
-conference-demo.duckdns.org
+server IPv4: 45.151.102.212
+domain: commmmet.duckdns.org
+repository: git@github.com:vyacheslavshtyrlin/conference.git
+deploy path: /opt/conference
+recommended deploy user: deploy
+recommended mediasoup workers for this 2-core server: 1
+```
+
+## DuckDNS setup
+
+1. Create a DuckDNS subdomain:
+
+```text
+commmmet.duckdns.org
 ```
 
 2. Point it to the server public IPv4.
@@ -68,22 +84,31 @@ conference-demo.duckdns.org
 3. Verify from your local machine:
 
 ```sh
-nslookup conference-demo.duckdns.org
+nslookup commmmet.duckdns.org
 ```
 
 It must resolve to the server public IP.
 
 ## Server setup
 
-Install packages:
+Create a non-root deploy user first if the server only has `root`:
+
+```sh
+adduser deploy
+usermod -aG sudo deploy
+su - deploy
+```
+
+Install packages as `deploy`:
 
 ```sh
 sudo apt-get update
 sudo apt-get install -y ca-certificates curl git nginx certbot python3-certbot-nginx
 
 curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker "$USER"
-newgrp docker
+sudo usermod -aG docker deploy
+exit
+ssh deploy@45.151.102.212
 
 docker --version
 docker compose version
@@ -94,7 +119,7 @@ Clone current repository:
 ```sh
 sudo mkdir -p /opt/conference
 sudo chown "$USER":"$USER" /opt/conference
-git clone git@github.com:<owner>/<repo>.git /opt/conference
+git clone git@github.com:vyacheslavshtyrlin/conference.git /opt/conference
 cd /opt/conference
 ```
 
@@ -112,15 +137,15 @@ Set these values:
 ```env
 NODE_ENV=production
 
-DOMAIN=conference-demo.duckdns.org
+DOMAIN=commmmet.duckdns.org
 CERTBOT_EMAIL=admin@example.com
 
-WEB_PUBLIC_URL=https://conference-demo.duckdns.org
+WEB_PUBLIC_URL=https://commmmet.duckdns.org
 MEDIA_NODE_ID=local
-SIGNALING_PUBLIC_URL=wss://conference-demo.duckdns.org/ws
+SIGNALING_PUBLIC_URL=wss://commmmet.duckdns.org/ws
 
-VITE_API_BASE_URL=https://conference-demo.duckdns.org/api/v1
-VITE_SIGNALING_URL=wss://conference-demo.duckdns.org/ws
+VITE_API_BASE_URL=https://commmmet.duckdns.org/api/v1
+VITE_SIGNALING_URL=wss://commmmet.duckdns.org/ws
 
 REDIS_URL=redis://redis:6379
 
@@ -128,16 +153,16 @@ MEDIASOUP_LISTEN_IP=0.0.0.0
 MEDIASOUP_ANNOUNCED_IP=<server-public-ip>
 MEDIASOUP_RTC_MIN_PORT=40000
 MEDIASOUP_RTC_MAX_PORT=40100
-MEDIASOUP_NUM_WORKERS=2
+MEDIASOUP_NUM_WORKERS=1
 
-TURN_URL=turn:conference-demo.duckdns.org:3478
+TURN_URL=turn:commmmet.duckdns.org:3478
 TURN_USERNAME=<change-me>
 TURN_PASSWORD=<change-me-strong>
-TURN_REALM=conference-demo.duckdns.org
+TURN_REALM=commmmet.duckdns.org
 
 JOIN_TOKEN_SECRET=<openssl-rand-hex-32>
 
-WS_ALLOWED_ORIGINS=https://conference-demo.duckdns.org
+WS_ALLOWED_ORIGINS=https://commmmet.duckdns.org
 WS_HEARTBEAT_INTERVAL_MS=30000
 WS_MAX_PAYLOAD_BYTES=65536
 WS_SEND_BACKPRESSURE_BYTES=262144
@@ -162,7 +187,7 @@ Important:
 Install the nginx site:
 
 ```sh
-export DOMAIN=conference-demo.duckdns.org
+export DOMAIN=commmmet.duckdns.org
 
 envsubst '$DOMAIN' < /opt/conference/nginx/conference.conf \
   | sudo tee /etc/nginx/sites-available/conference
@@ -177,7 +202,7 @@ sudo systemctl reload nginx
 Issue certificate:
 
 ```sh
-sudo certbot --nginx -d conference-demo.duckdns.org
+sudo certbot --nginx -d commmmet.duckdns.org
 ```
 
 After certbot, verify:
@@ -192,16 +217,16 @@ sudo systemctl reload nginx
 From `/opt/conference`:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.prod.yml config
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml config
+docker compose -f docker-compose.prod.yml up -d --build
 docker compose ps
 ```
 
 Check services:
 
 ```sh
-curl https://conference-demo.duckdns.org
-curl https://conference-demo.duckdns.org/api/v1/health
+curl https://commmmet.duckdns.org
+curl https://commmmet.duckdns.org/api/v1/health
 curl http://127.0.0.1:4000/ready
 ```
 
@@ -209,7 +234,7 @@ curl http://127.0.0.1:4000/ready
 
 Minimum smoke test:
 
-1. Open `https://conference-demo.duckdns.org`.
+1. Open `https://commmmet.duckdns.org`.
 2. Create a room.
 3. Confirm creator lands on pre-join.
 4. Join as creator.
@@ -237,7 +262,7 @@ For quick MVP updates:
 ```sh
 cd /opt/conference
 git pull --ff-only
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 docker compose ps
 ```
 

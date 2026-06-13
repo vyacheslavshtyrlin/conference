@@ -12,7 +12,7 @@ Owner: Architect + DevOps.
 
 1. Keep the current combined repository for MVP validation.
 2. Use existing Dockerfiles for `web`, `api` and `signaling`.
-3. Use `docker-compose.yml` plus `docker-compose.prod.yml`.
+3. Use `docker-compose.prod.yml` as the standalone MVP server compose file.
 4. Deploy to one public server with DuckDNS.
 5. Terminate HTTPS/WSS through host nginx + certbot.
 6. Expose mediasoup UDP range and coturn.

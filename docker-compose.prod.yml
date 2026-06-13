@@ -1,32 +1,115 @@
-# Production overlay — run alongside docker-compose.yml:
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Production compose for the MVP server.
+# Run from the repository root:
+#   docker compose -f docker-compose.prod.yml up -d --build
 #
-# What this file does:
-#   - Switches web/api/signaling builds to their production targets
-#   - Exposes the web static-nginx on 127.0.0.1:8080 so the host nginx can proxy to it
-#     (host nginx → localhost:8080 for web, localhost:3000 for api, localhost:4000 for signaling)
-#   - Redis is already bound to 127.0.0.1 in docker-compose.yml
-#   - VITE_* vars are baked into the web bundle at build time via build.args
+# This file is intentionally standalone, not an override for docker-compose.yml.
+# Keeping it standalone avoids Compose-specific merge tags that are commonly
+# flagged by IDE YAML parsers.
 
 services:
   web:
     build:
+      context: .
+      dockerfile: apps/web/Dockerfile
       target: production
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL}
         VITE_SIGNALING_URL: ${VITE_SIGNALING_URL}
     ports:
       - "127.0.0.1:8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      signaling:
+        condition: service_healthy
 
   api:
     build:
+      context: .
+      dockerfile: apps/api/Dockerfile
       target: production
+    ports:
+      - "127.0.0.1:3000:3000"
     environment:
       NODE_ENV: production
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+      MEDIA_NODE_ID: ${MEDIA_NODE_ID:-local}
+      SIGNALING_PUBLIC_URL: ${SIGNALING_PUBLIC_URL}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL}
+      JOIN_TOKEN_SECRET: ${JOIN_TOKEN_SECRET}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   signaling:
     build:
+      context: .
+      dockerfile: apps/signaling/Dockerfile
       target: production
+    ports:
+      - "127.0.0.1:4000:4000"
+      - "40000-40100:40000-40100/udp"
+      - "40000-40100:40000-40100/tcp"
     environment:
       NODE_ENV: production
+      PORT: 4000
+      REDIS_URL: redis://redis:6379
+      JOIN_TOKEN_SECRET: ${JOIN_TOKEN_SECRET}
+      WS_HEARTBEAT_INTERVAL_MS: ${WS_HEARTBEAT_INTERVAL_MS:-30000}
+      WS_MAX_PAYLOAD_BYTES: ${WS_MAX_PAYLOAD_BYTES:-65536}
+      WS_SEND_BACKPRESSURE_BYTES: ${WS_SEND_BACKPRESSURE_BYTES:-262144}
+      WS_RATE_LIMIT_WINDOW_MS: ${WS_RATE_LIMIT_WINDOW_MS:-10000}
+      WS_RATE_LIMIT_MAX_MESSAGES: ${WS_RATE_LIMIT_MAX_MESSAGES:-60}
+      WS_ALLOWED_ORIGINS: ${WS_ALLOWED_ORIGINS}
+      MEDIASOUP_LISTEN_IP: 0.0.0.0
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP}
+      MEDIASOUP_RTC_MIN_PORT: ${MEDIASOUP_RTC_MIN_PORT:-40000}
+      MEDIASOUP_RTC_MAX_PORT: ${MEDIASOUP_RTC_MAX_PORT:-40100}
+      MEDIASOUP_NUM_WORKERS: ${MEDIASOUP_NUM_WORKERS:-1}
+      MEDIASOUP_MAX_TRANSPORTS_PER_PEER: ${MEDIASOUP_MAX_TRANSPORTS_PER_PEER:-4}
+      MEDIASOUP_MAX_PRODUCERS_PER_PEER: ${MEDIASOUP_MAX_PRODUCERS_PER_PEER:-3}
+      MEDIASOUP_MAX_CONSUMERS_PER_PEER: ${MEDIASOUP_MAX_CONSUMERS_PER_PEER:-32}
+    depends_on:
+      redis:
+        condition: service_healthy
+      turn:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:4000/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  turn:
+    image: coturn/coturn:4.6-alpine
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+    command:
+      - --lt-cred-mech
+      - --user=${TURN_USERNAME:-conference}:${TURN_PASSWORD:-conference}
+      - --realm=${TURN_REALM:-conference.local}
+      - --no-tls
+      - --no-dtls
+      - --log-file=-
+      - --listening-port=3478
+      - --min-port=49152
+      - --max-port=65535

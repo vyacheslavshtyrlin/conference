@@ -25,7 +25,7 @@ Local development runs:
 
 - `web`: React Vite dev server, port `5173`.
 - `api`: NestJS API, port `3000`.
-- `signaling`: Node.js mediasoup/WebSocket service, port `4000`, UDP `40000-49999`.
+- `signaling`: Node.js mediasoup/WebSocket service, port `4000`, UDP/TCP `40000-40100`.
 - `redis`: room/session state, port `6379`.
 - `turn`: coturn STUN/TURN, TCP/UDP `3478`.
 
@@ -96,14 +96,15 @@ services:
       target: dev
     ports:
       - "4000:4000"
-      - "40000-49999:40000-49999/udp"
+      - "40000-40100:40000-40100/udp"
+      - "40000-40100:40000-40100/tcp"
     environment:
       REDIS_URL: redis://redis:6379
       MEDIASOUP_LISTEN_IP: 0.0.0.0
       MEDIASOUP_ANNOUNCED_IP: 127.0.0.1  # IP included in WebRTC ICE candidates
       MEDIASOUP_RTC_MIN_PORT: 40000
-      MEDIASOUP_RTC_MAX_PORT: 49999
-      # MEDIASOUP_NUM_WORKERS: 2         # defaults to CPU count; see worker pool note below
+      MEDIASOUP_RTC_MAX_PORT: 40100
+      MEDIASOUP_NUM_WORKERS: 2
       MEDIASOUP_MAX_TRANSPORTS_PER_PEER: 4
       MEDIASOUP_MAX_PRODUCERS_PER_PEER: 3
       MEDIASOUP_MAX_CONSUMERS_PER_PEER: 32
@@ -128,7 +129,7 @@ services:
 
 - Browser camera/mic works on `localhost` without HTTPS.
 - For non-localhost origins HTTPS is required (iOS Safari enforces this strictly).
-- mediasoup UDP port range must be explicitly exposed in Docker. The default range is `40000-49999` (10 000 ports), which comfortably supports 10 simultaneous rooms with 1–4 participants each. Each WebRTC transport reserves a small number of UDP ports; the wider range prevents exhaustion under concurrent load.
+- mediasoup RTC port range must be explicitly exposed in Docker. The current MVP range is `40000-40100`, which is enough for the single-server MVP smoke tests and keeps firewall rules manageable. Wider ranges can be configured later if concurrent rooms or relay-heavy traffic require it.
 - The signaling service announces ICE candidates using `MEDIASOUP_ANNOUNCED_IP`. Set this to an IP reachable from the browser.
 - The signaling service limits mediasoup resource allocation per participant. Defaults are `MEDIASOUP_MAX_TRANSPORTS_PER_PEER=4`, `MEDIASOUP_MAX_PRODUCERS_PER_PEER=3` and `MEDIASOUP_MAX_CONSUMERS_PER_PEER=32`.
 
@@ -136,8 +137,9 @@ services:
 
 The signaling service creates a fixed pool of mediasoup worker processes at startup and distributes rooms across them using round-robin. Workers are OS-level processes: each runs its own libuv event loop and holds the native C++ media engine. Rooms on the same worker share its CPU core and port allocation.
 
-- Default: `cpus().length` (one worker per logical CPU core).
-- For local Docker development on a multi-core machine, **set `MEDIASOUP_NUM_WORKERS=2`** to keep Docker port mapping manageable and avoid spawning idle workers. The Docker Compose file exposes the full `40000-49999` range, which is shared across all workers.
+- Application default without Compose override: `cpus().length` (one worker per logical CPU core).
+- Docker Compose default: `MEDIASOUP_NUM_WORKERS=2` for local development; set `1` in the server `.env` for the current 2-core MVP server.
+- For local Docker development on a multi-core machine, **set `MEDIASOUP_NUM_WORKERS=2`** to keep Docker port mapping manageable and avoid spawning idle workers. The Docker Compose file exposes the `40000-40100` range, which is shared across all workers.
 - For production, set workers to match the number of physical CPU cores available to the container. For the MVP single-node target, `2–4` is a reasonable starting point unless the host has many cores dedicated to this service.
 - Do not set `MEDIASOUP_NUM_WORKERS` higher than the number of CPU cores — excess workers compete for the same cores and increase process overhead without improving throughput.
 - If a worker process crashes unexpectedly, the signaling service logs the failure, tears down all rooms on that worker, notifies connected clients, and continues serving rooms on the remaining workers.
@@ -255,7 +257,7 @@ MVP deployment target is one dedicated server. Vercel is not used for MVP deploy
 - WSS for signaling.
 - Public `MEDIASOUP_ANNOUNCED_IP` (server's public IP).
 - TURN with TLS credentials and a real realm.
-- Firewall rules open for mediasoup UDP port range (`40000-49999` by default; adjust `MEDIASOUP_RTC_MIN_PORT` / `MEDIASOUP_RTC_MAX_PORT` to a narrower range if the firewall requires it).
+- Firewall rules open for mediasoup UDP port range (`40000-40100` by default; adjust `MEDIASOUP_RTC_MIN_PORT` / `MEDIASOUP_RTC_MAX_PORT` if the compose mapping is changed too).
 - coturn relay port range open in the firewall.
 - Sticky room routing if more than one signaling/media instance is deployed.
 

@@ -166,7 +166,7 @@ Renewal is automatic via the certbot systemd timer (`certbot.timer`).
 
 ```bash
 cd /opt/conference
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 docker compose ps
 ```
 
@@ -232,7 +232,7 @@ The `deploy` job only runs when triggered manually (`workflow_dispatch`) on `mai
 ```bash
 cd /opt/conference
 git pull --ff-only
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 If `mvp-production` has required reviewers, GitHub will pause the deploy job and send an email asking for approval before the SSH step executes.
@@ -262,12 +262,12 @@ Media connectivity:
 cd /opt/conference
 git log --oneline -5
 git checkout <previous-commit-sha>
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 Return to main:
 
 ```bash
 git checkout main && git pull --ff-only
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build
 ```
