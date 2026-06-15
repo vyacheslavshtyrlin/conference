@@ -85,5 +85,11 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "$MVP_DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null
           ssh-keyscan "$MVP_DEPLOY_HOST" >> ~/.ssh/known_hosts
-          ssh "$MVP_DEPLOY_USER@$MVP_DEPLOY_HOST" "cd '$MVP_DEPLOY_PATH' && git pull --ff-only && docker compose -f docker-compose.prod.yml up -d --build"
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            "$MVP_DEPLOY_USER@$MVP_DEPLOY_HOST" \
+            "cd '$MVP_DEPLOY_PATH' && git pull --ff-only && docker compose -f docker-compose.prod.yml up -d --build"
